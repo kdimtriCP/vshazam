@@ -50,12 +50,34 @@ export DB_PATH=./vshazam.db          # SQLite database path (default: ./vshazam.
 
 ### Running the Application
 
-Using Go directly:
+**With Docker (Recommended):**
 ```bash
+# Build and start all services
+make docker-up
+
+# View logs
+make docker-logs
+
+# Stop services
+make docker-down
+```
+
+**Without Docker:**
+```bash
+# Using SQLite (default)
+go run cmd/server/main.go
+
+# Using PostgreSQL
+export DB_TYPE=postgres
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=vshazam
+export DB_PASSWORD=vshazam_dev
+export DB_NAME=vshazam
 go run cmd/server/main.go
 ```
 
-Using Make:
+**Using Make:**
 ```bash
 make run
 ```
@@ -124,7 +146,17 @@ make build
 ### Running Tests
 
 ```bash
+# Run all tests
 make test
+
+# Run unit tests only
+make test-unit
+
+# Run integration tests
+make test-integration
+
+# Run tests with coverage
+make test-coverage
 ```
 
 ## Implementation Stages
@@ -132,7 +164,7 @@ make test
 1. **Stage 1**: Basic HTTP server with routing ✓
 2. **Stage 2**: File upload with HTMX and local storage ✓
 3. **Stage 3**: Video playback with Range request support ✓
-4. **Stage 4**: PostgreSQL integration and search
+4. **Stage 4**: Docker containerization, PostgreSQL, and full-text search ✓
 5. **Stage 5**: AI service integration
 6. **Stage 6**: Film identification algorithm
 7. **Stage 7**: Cloud deployment

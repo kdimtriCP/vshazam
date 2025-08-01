@@ -1,0 +1,40 @@
+# Git files
+.git/
+.gitignore
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Development files
+.env
+.env.local
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+*.md
+docs/
+.claude/
+
+# Local data
+vshazam.db
+uploads/
+
+# Dependencies
+vendor/

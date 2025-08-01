@@ -8,9 +8,22 @@ run:
 build:
 	go build -o bin/vshazam cmd/server/main.go
 
-# Run tests
+# Run all tests
 test:
 	go test ./...
+
+# Run unit tests only
+test-unit:
+	go test ./internal/...
+
+# Run integration tests
+test-integration:
+	go test ./tests/integration/... -v
+
+# Run tests with coverage
+test-coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
 
 # Clean build artifacts
 clean:
@@ -45,3 +58,23 @@ lint:
 	else \
 		echo "golangci-lint is not installed. Install it from https://golangci-lint.run/usage/install/"; \
 	fi
+
+# Docker commands
+docker-build:
+	docker-compose build
+
+docker-up:
+	docker-compose up -d
+
+docker-down:
+	docker-compose down
+
+docker-logs:
+	docker-compose logs -f
+
+docker-clean:
+	docker-compose down -v
+
+# Data migration
+migrate-data:
+	go run scripts/migrate_sqlite_to_postgres.go

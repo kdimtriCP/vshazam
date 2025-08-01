@@ -193,9 +193,13 @@ func (app *App) ListVideosHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Videos []models.Video
+		Videos   []models.Video
+		Query    string
+		IsSearch bool
 	}{
-		Videos: videos,
+		Videos:   videos,
+		Query:    "",
+		IsSearch: false,
 	}
 
 	if err := tmpl.Execute(w, data); err != nil {
@@ -271,4 +275,61 @@ func (app *App) StreamVideoHandler(w http.ResponseWriter, r *http.Request) {
 	// ServeContent handles Range requests automatically
 	// It sets proper headers including Accept-Ranges, Content-Length, and handles 206 Partial Content
 	http.ServeContent(w, r, video.Filename, stat.ModTime(), file)
+}
+
+func (app *App) SearchHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+
+	videos, err := app.VideoRepo.SearchVideos(query)
+	if err != nil {
+		http.Error(w, "Error searching videos", http.StatusInternalServerError)
+		return
+	}
+
+	// If it's an HTMX request, return only the results partial
+	if r.Header.Get("HX-Request") == "true" {
+		tmplPath := filepath.Join("web", "templates", "search_results.html")
+		tmpl, err := template.ParseFiles(tmplPath)
+		if err != nil {
+			w.Write([]byte("<p>Error loading search results</p>"))
+			return
+		}
+
+		data := struct {
+			Videos []models.Video
+			Query  string
+		}{
+			Videos: videos,
+			Query:  query,
+		}
+
+		if err := tmpl.Execute(w, data); err != nil {
+			w.Write([]byte("<p>Error rendering search results</p>"))
+			return
+		}
+		return
+	}
+
+	// Otherwise, render the full page with search results
+	tmplPath := filepath.Join("web", "templates", "list.html")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Videos   []models.Video
+		Query    string
+		IsSearch bool
+	}{
+		Videos:   videos,
+		Query:    query,
+		IsSearch: query != "",
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		return
+	}
 }

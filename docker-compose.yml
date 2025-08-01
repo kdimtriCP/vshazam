@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PORT=8080
+      - DB_TYPE=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=vshazam
+      - DB_PASSWORD=vshazam_dev
+      - DB_NAME=vshazam
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - vshazam-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=vshazam
+      - POSTGRES_PASSWORD=vshazam_dev
+      - POSTGRES_DB=vshazam
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vshazam"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vshazam-network
+
+networks:
+  vshazam-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

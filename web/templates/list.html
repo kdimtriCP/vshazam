@@ -21,8 +21,26 @@
     
     <main>
         <div class="container">
-            <h2>All Videos</h2>
-            {{if .Videos}}
+            <div class="search-container">
+                <input type="search" 
+                       name="q" 
+                       placeholder="Search videos..."
+                       value="{{.Query}}"
+                       hx-get="/search"
+                       hx-target="#search-results"
+                       hx-trigger="keyup changed delay:500ms"
+                       hx-indicator="#search-spinner"
+                       class="search-input">
+                <span id="search-spinner" class="htmx-indicator">Searching...</span>
+            </div>
+            
+            <div id="search-results">
+                {{if .IsSearch}}
+                    <h2>Search Results for "{{.Query}}"</h2>
+                {{else}}
+                    <h2>All Videos</h2>
+                {{end}}
+                {{if .Videos}}
                 <div class="video-grid">
                     {{range .Videos}}
                     <div class="video-card">
@@ -47,6 +65,7 @@
                     <a href="/upload" class="btn btn-primary">Upload First Video</a>
                 </div>
             {{end}}
+            </div>
         </div>
     </main>
     

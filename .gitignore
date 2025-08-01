@@ -7,3 +7,5 @@ coverage.out
 coverage.html
 *.db
 *.mp4
+/uploads/
+/bin/vshazam
