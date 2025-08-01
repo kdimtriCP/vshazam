@@ -7,3 +7,5 @@ gh-inspector
 .gh-inspector-cache/
 coverage.out
 coverage.html
+/vshazam.db
+*.mp4

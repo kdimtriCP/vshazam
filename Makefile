@@ -29,7 +29,7 @@ dev:
 	@if command -v air > /dev/null; then \
 		air; \
 	else \
-		echo "Air is not installed. Install it with: go install github.com/cosmtrek/air@latest"; \
+		echo "Air is not installed. Install it with: go install github.com/air-verse/air@latest"; \
 		echo "Running without hot reload..."; \
 		go run cmd/server/main.go; \
 	fi

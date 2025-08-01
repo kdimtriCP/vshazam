@@ -1,0 +1,11 @@
+<div class="video-item">
+    <h4>{{.Title}}</h4>
+    {{if .Description}}
+        <p>{{.Description}}</p>
+    {{end}}
+    <div class="video-meta">
+        <span>Size: {{.Size | formatSize}}</span>
+        <span>•</span>
+        <span>Uploaded: {{.UploadTime.Format "Jan 2, 2006 15:04"}}</span>
+    </div>
+</div>

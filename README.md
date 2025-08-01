@@ -34,9 +34,18 @@ cd vshazam
 go mod download
 ```
 
-3. Set environment variables (optional):
+3. Copy environment variables (optional):
 ```bash
-export PORT=8080  # Default is 8080
+cp .env.example .env
+# Edit .env as needed
+```
+
+4. Set environment variables (optional):
+```bash
+export PORT=8080                      # Server port (default: 8080)
+export MAX_UPLOAD_SIZE=104857600      # Max upload size in bytes (default: 100MB)
+export UPLOAD_DIR=./uploads           # Upload directory (default: ./uploads)
+export DB_PATH=./vshazam.db          # SQLite database path (default: ./vshazam.db)
 ```
 
 ### Running the Application
@@ -64,6 +73,11 @@ Open the web interface:
 open http://localhost:8080
 ```
 
+Upload a video:
+```bash
+open http://localhost:8080/upload
+```
+
 ## Project Structure
 
 ```
@@ -72,19 +86,31 @@ vshazam/
 │   └── server/
 │       └── main.go            # Application entry point
 ├── internal/
-│   └── api/                   # HTTP API
-│       ├── router.go          # Route definitions
-│       └── handlers.go        # Request handlers
+│   ├── api/                   # HTTP API
+│   │   ├── router.go          # Route definitions
+│   │   └── handlers.go        # Request handlers
+│   ├── database/              # Database layer
+│   │   ├── db.go             # Database connection
+│   │   └── video_repo.go     # Video repository
+│   ├── models/                # Data models
+│   │   └── video.go          # Video model
+│   └── storage/               # File storage
+│       ├── storage.go        # Storage interface
+│       └── local_storage.go  # Local filesystem implementation
 ├── web/
 │   ├── templates/             # HTML templates
-│   │   └── base.html          # Base layout
+│   │   ├── base.html          # Base layout
+│   │   ├── upload.html        # Upload page
+│   │   └── _video_item.html   # Video list item partial
 │   └── static/                # Static assets
 │       └── styles.css         # CSS styles
+├── uploads/                   # Uploaded video files
 ├── go.mod                     # Go module file
 ├── go.sum                     # Go dependencies
 ├── README.md                  # This file
 ├── .env.example               # Environment variables example
-└── Makefile                   # Build commands
+├── Makefile                   # Build commands
+└── vshazam.db                # SQLite database
 ```
 
 ## Development
@@ -104,7 +130,7 @@ make test
 ## Implementation Stages
 
 1. **Stage 1**: Basic HTTP server with routing ✓
-2. **Stage 2**: File upload with HTMX and local storage
+2. **Stage 2**: File upload with HTMX and local storage ✓
 3. **Stage 3**: Video playback with Range request support
 4. **Stage 4**: PostgreSQL integration and search
 5. **Stage 5**: AI service integration

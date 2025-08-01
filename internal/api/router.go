@@ -7,7 +7,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter() http.Handler {
+func NewRouter(app *App) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -15,6 +15,10 @@ func NewRouter() http.Handler {
 
 	r.Get("/", HomeHandler)
 	r.Get("/ping", PingHandler)
+
+	r.Get("/upload", app.UploadPageHandler)
+	r.Post("/upload", app.UploadHandler)
+	r.Get("/videos/partial", app.VideoListPartialHandler)
 
 	fileServer := http.FileServer(http.Dir("./web/static"))
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
