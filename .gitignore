@@ -1,0 +1,9 @@
+.env
+.DS_Store
+tmp/
+main
+.idea
+gh-inspector
+.gh-inspector-cache/
+coverage.out
+coverage.html
