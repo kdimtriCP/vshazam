@@ -13,10 +13,21 @@
         <p>Film Recognition Service</p>
     </header>
     
+    <nav class="nav-bar">
+        <a href="/" class="active">Home</a>
+        <a href="/videos">All Videos</a>
+        <a href="/upload">Upload</a>
+    </nav>
+    
     <main>
         <div class="container">
             <h2>{{.Message}}</h2>
             <p>Welcome to VShazam - Your video-based film identification service!</p>
+            
+            <div class="home-actions">
+                <a href="/upload" class="btn btn-primary">Upload Video</a>
+                <a href="/videos" class="btn btn-secondary">View All Videos</a>
+            </div>
         </div>
     </main>
     

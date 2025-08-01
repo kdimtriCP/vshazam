@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Videos - VShazam</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+</head>
+<body>
+    <header>
+        <h1>VShazam</h1>
+        <p>Film Recognition Service</p>
+    </header>
+    
+    <nav class="nav-bar">
+        <a href="/">Home</a>
+        <a href="/videos" class="active">All Videos</a>
+        <a href="/upload">Upload</a>
+    </nav>
+    
+    <main>
+        <div class="container">
+            <h2>All Videos</h2>
+            {{if .Videos}}
+                <div class="video-grid">
+                    {{range .Videos}}
+                    <div class="video-card">
+                        <div class="video-card-content">
+                            <h3><a href="/videos/{{.ID}}">{{.Title}}</a></h3>
+                            {{if .Description}}
+                                <p class="video-card-description">{{.Description}}</p>
+                            {{end}}
+                            <div class="video-card-meta">
+                                <span>{{.UploadTime.Format "Jan 2, 2006"}}</span>
+                            </div>
+                        </div>
+                        <div class="video-card-actions">
+                            <a href="/videos/{{.ID}}" class="btn btn-primary">Watch Video</a>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+            {{else}}
+                <div class="empty-state">
+                    <p>No videos uploaded yet.</p>
+                    <a href="/upload" class="btn btn-primary">Upload First Video</a>
+                </div>
+            {{end}}
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2025 VShazam. All rights reserved.</p>
+    </footer>
+</body>
+</html>

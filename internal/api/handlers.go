@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/kdimtricp/vshazam/internal/database"
 	"github.com/kdimtricp/vshazam/internal/models"
 	"github.com/kdimtricp/vshazam/internal/storage"
@@ -174,4 +176,99 @@ func formatFileSize(size int64) string {
 	default:
 		return fmt.Sprintf("%d B", size)
 	}
+}
+
+func (app *App) ListVideosHandler(w http.ResponseWriter, r *http.Request) {
+	videos, err := app.VideoRepo.ListVideos()
+	if err != nil {
+		http.Error(w, "Error loading videos", http.StatusInternalServerError)
+		return
+	}
+
+	tmplPath := filepath.Join("web", "templates", "list.html")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Videos []models.Video
+	}{
+		Videos: videos,
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (app *App) WatchVideoHandler(w http.ResponseWriter, r *http.Request) {
+	videoID := chi.URLParam(r, "id")
+	if videoID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	video, err := app.VideoRepo.GetVideoByID(videoID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	tmplPath := filepath.Join("web", "templates", "video.html")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		http.Error(w, "Error loading template", http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Video         *models.Video
+		FormattedSize string
+	}{
+		Video:         video,
+		FormattedSize: formatFileSize(video.Size),
+	}
+
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (app *App) StreamVideoHandler(w http.ResponseWriter, r *http.Request) {
+	videoID := chi.URLParam(r, "id")
+	if videoID == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	video, err := app.VideoRepo.GetVideoByID(videoID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	file, err := app.Storage.OpenFile(video.Filename)
+	if err != nil {
+		http.Error(w, "Video file not found", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	// Get file info for ServeContent
+	stat, err := file.(interface{ Stat() (os.FileInfo, error) }).Stat()
+	if err != nil {
+		http.Error(w, "Error accessing video file", http.StatusInternalServerError)
+		return
+	}
+
+	// Set content type
+	w.Header().Set("Content-Type", video.ContentType)
+
+	// ServeContent handles Range requests automatically
+	// It sets proper headers including Accept-Ranges, Content-Length, and handles 206 Partial Content
+	http.ServeContent(w, r, video.Filename, stat.ModTime(), file)
 }

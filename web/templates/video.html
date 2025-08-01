@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Video.Title}} - VShazam</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+</head>
+<body>
+    <header>
+        <h1>VShazam</h1>
+        <p>Film Recognition Service</p>
+    </header>
+    
+    <nav class="nav-bar">
+        <a href="/">Home</a>
+        <a href="/videos">All Videos</a>
+        <a href="/upload">Upload</a>
+    </nav>
+    
+    <main>
+        <div class="container">
+            <div class="video-player-container">
+                <h2>{{.Video.Title}}</h2>
+                <video class="video-player" controls>
+                    <source src="/stream/{{.Video.ID}}" type="{{.Video.ContentType}}">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="video-details">
+                    {{if .Video.Description}}
+                        <p class="video-description">{{.Video.Description}}</p>
+                    {{end}}
+                    <div class="video-metadata">
+                        <span>Size: {{.FormattedSize}}</span>
+                        <span>•</span>
+                        <span>Uploaded: {{.Video.UploadTime.Format "Jan 2, 2006 15:04"}}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2025 VShazam. All rights reserved.</p>
+    </footer>
+</body>
+</html>

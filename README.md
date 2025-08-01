@@ -131,7 +131,7 @@ make test
 
 1. **Stage 1**: Basic HTTP server with routing ✓
 2. **Stage 2**: File upload with HTMX and local storage ✓
-3. **Stage 3**: Video playback with Range request support
+3. **Stage 3**: Video playback with Range request support ✓
 4. **Stage 4**: PostgreSQL integration and search
 5. **Stage 5**: AI service integration
 6. **Stage 6**: Film identification algorithm

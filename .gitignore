@@ -3,9 +3,7 @@
 tmp/
 main
 .idea
-gh-inspector
-.gh-inspector-cache/
 coverage.out
 coverage.html
-/vshazam.db
+*.db
 *.mp4

@@ -20,6 +20,10 @@ func NewRouter(app *App) http.Handler {
 	r.Post("/upload", app.UploadHandler)
 	r.Get("/videos/partial", app.VideoListPartialHandler)
 
+	r.Get("/videos", app.ListVideosHandler)
+	r.Get("/videos/{id}", app.WatchVideoHandler)
+	r.Get("/stream/{id}", app.StreamVideoHandler)
+
 	fileServer := http.FileServer(http.Dir("./web/static"))
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
 
