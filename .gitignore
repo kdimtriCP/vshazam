@@ -9,3 +9,4 @@ coverage.html
 *.mp4
 /uploads/
 /bin/vshazam
+*.sh

@@ -20,6 +20,7 @@ WORKDIR /app
 # Copy binary and static files
 COPY --from=builder /app/vshazam .
 COPY --from=builder /app/web ./web
+COPY --from=builder /app/migrations ./migrations
 
 # Create uploads directory
 RUN mkdir -p /app/uploads

@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/database"
 	"github.com/kdimtricp/vshazam/internal/models"
 	"github.com/kdimtricp/vshazam/internal/storage"
@@ -42,10 +45,14 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type App struct {
-	Storage       storage.Storage
-	DB            *database.DB
-	VideoRepo     *database.VideoRepository
-	MaxUploadSize int64
+	Storage        storage.Storage
+	DB             *database.DB
+	VideoRepo      *database.VideoRepository
+	FrameRepo      *database.FrameAnalysisRepo
+	MaxUploadSize  int64
+	VisionService  ai.VisionService
+	FrameExtractor *ai.FrameExtractor
+	AIConfig       *ai.Config
 }
 
 func (app *App) UploadPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +117,11 @@ func (app *App) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		app.Storage.DeleteFile(filename)
 		app.renderError(w, "Failed to save video information")
 		return
+	}
+
+	// Trigger AI analysis if services are configured
+	if app.VisionService != nil && app.FrameExtractor != nil {
+		go app.analyzeVideo(video)
 	}
 
 	app.renderSuccess(w, "Video uploaded successfully!")
@@ -331,5 +343,54 @@ func (app *App) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, "Error rendering template", http.StatusInternalServerError)
 		return
+	}
+}
+
+
+func (app *App) analyzeVideo(video *models.Video) {
+	ctx := context.Background()
+	
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "./uploads"
+	}
+	videoPath := filepath.Join(uploadDir, video.Filename)
+	
+	// Log path for debugging
+	log.Printf("Attempting to analyze video at path: %s", videoPath)
+	
+	// Check if file exists
+	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
+		log.Printf("Video file not found at %s", videoPath)
+		return
+	}
+
+	frames, err := app.FrameExtractor.ExtractFrames(videoPath, app.AIConfig.MaxFramesPerVideo, app.AIConfig.FrameSize)
+	if err != nil {
+		log.Printf("Failed to extract frames for video %s: %v", video.ID, err)
+		return
+	}
+
+	log.Printf("Extracted %d frames from video %s", len(frames), video.ID)
+
+	for i, frameData := range frames {
+		analysis, err := app.VisionService.AnalyzeFrame(ctx, frameData)
+		if err != nil {
+			log.Printf("Failed to analyze frame %d for video %s: %v", i, video.ID, err)
+			continue
+		}
+
+		dbAnalysis, err := analysis.ToDB(video.ID, i)
+		if err != nil {
+			log.Printf("Failed to convert analysis to DB format for video %s frame %d: %v", video.ID, i, err)
+			continue
+		}
+
+		if err := app.FrameRepo.Create(ctx, dbAnalysis); err != nil {
+			log.Printf("Failed to save analysis for video %s frame %d: %v", video.ID, i, err)
+			continue
+		}
+
+		log.Printf("Successfully analyzed frame %d for video %s (confidence: %.2f)", i, video.ID, analysis.Confidence)
 	}
 }

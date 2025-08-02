@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS videos (
 );
 
 -- Create GIN index for full-text search
-CREATE INDEX idx_videos_search ON videos USING GIN(search_vector);
+CREATE INDEX IF NOT EXISTS idx_videos_search ON videos USING GIN(search_vector);
 
 -- Trigger to update search_vector automatically
 CREATE OR REPLACE FUNCTION videos_search_trigger() RETURNS trigger AS $$
@@ -26,6 +26,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_search_vector ON videos;
 CREATE TRIGGER update_search_vector 
     BEFORE INSERT OR UPDATE ON videos
     FOR EACH ROW EXECUTE FUNCTION videos_search_trigger();

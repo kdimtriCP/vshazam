@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/api"
 	"github.com/kdimtricp/vshazam/internal/database"
 	"github.com/kdimtricp/vshazam/internal/storage"
@@ -88,13 +89,76 @@ func main() {
 	}
 	defer db.Close()
 
+	// Run database migrations
+	migrationsPath := os.Getenv("MIGRATIONS_PATH")
+	if migrationsPath == "" {
+		migrationsPath = "./migrations"
+	}
+	
+	log.Printf("Running database migrations from %s", migrationsPath)
+	if err := db.RunMigrations(migrationsPath); err != nil {
+		log.Fatal("Failed to run migrations:", err)
+	}
+
 	videoRepo := database.NewVideoRepository(db)
+	frameRepo := database.NewFrameAnalysisRepo(db)
+
+	// AI Configuration
+	aiConfig := &ai.Config{
+		OpenAIAPIKey:     os.Getenv("OPENAI_API_KEY"),
+		GoogleVisionKey:  os.Getenv("GOOGLE_VISION_API_KEY"),
+		GoogleCSEID:      os.Getenv("GOOGLE_CSE_ID"),
+		TMDbAPIKey:       os.Getenv("TMDB_API_KEY"),
+	}
+
+	// Parse AI configuration values
+	maxFramesStr := os.Getenv("MAX_FRAMES_PER_VIDEO")
+	if maxFramesStr != "" {
+		if maxFrames, err := strconv.Atoi(maxFramesStr); err == nil {
+			aiConfig.MaxFramesPerVideo = maxFrames
+		}
+	}
+	if aiConfig.MaxFramesPerVideo == 0 {
+		aiConfig.MaxFramesPerVideo = 5
+	}
+
+	frameSizeStr := os.Getenv("FRAME_SIZE")
+	if frameSizeStr != "" {
+		if frameSize, err := strconv.Atoi(frameSizeStr); err == nil {
+			aiConfig.FrameSize = frameSize
+		}
+	}
+	if aiConfig.FrameSize == 0 {
+		aiConfig.FrameSize = 512
+	}
+
+	// Initialize AI services if API keys are provided
+	var visionService ai.VisionService
+	var frameExtractor *ai.FrameExtractor
+	
+	if aiConfig.OpenAIAPIKey != "" || aiConfig.GoogleVisionKey != "" {
+		visionService, err = ai.NewVisionService(aiConfig)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize vision service: %v", err)
+		} else {
+			frameExtractor, err = ai.NewFrameExtractor()
+			if err != nil {
+				log.Printf("Warning: Failed to initialize frame extractor: %v", err)
+			}
+		}
+	} else {
+		log.Printf("AI services not configured. Set at least one: OPENAI_API_KEY or GOOGLE_VISION_API_KEY")
+	}
 
 	app := &api.App{
-		Storage:       localStorage,
-		DB:            db,
-		VideoRepo:     videoRepo,
-		MaxUploadSize: maxSize,
+		Storage:        localStorage,
+		DB:             db,
+		VideoRepo:      videoRepo,
+		FrameRepo:      frameRepo,
+		MaxUploadSize:  maxSize,
+		VisionService:  visionService,
+		FrameExtractor: frameExtractor,
+		AIConfig:       aiConfig,
 	}
 
 	router := api.NewRouter(app)

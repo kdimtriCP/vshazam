@@ -78,3 +78,16 @@ docker-clean:
 # Data migration
 migrate-data:
 	go run scripts/migrate_sqlite_to_postgres.go
+
+# Database migrations
+migrate:
+	go run cmd/migrate/main.go
+
+migrate-status:
+	go run cmd/migrate/main.go -status
+
+docker-migrate:
+	docker-compose exec app ./vshazam -migrate
+
+docker-migrate-status:
+	docker-compose exec app go run cmd/migrate/main.go -status
