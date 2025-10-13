@@ -2,6 +2,7 @@ package identification
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/database"
+	"github.com/kdimtricp/vshazam/internal/models"
 	"github.com/kdimtricp/vshazam/internal/storage"
 )
 
@@ -21,9 +23,9 @@ type Service struct {
 	searchClient     *ai.GoogleSearchClient
 	tmdbClient       *TMDbClient
 	frameExtractor   *ai.FrameExtractor
-	videoRepo        database.VideoRepository
-	frameRepo        database.FrameAnalysisRepository
-	storageService   storage.Service
+	videoRepo        *database.VideoRepository
+	frameRepo        *database.FrameAnalysisRepo
+	storageService   storage.Storage
 	scoreThreshold   float64
 	maxFramesAnalyze int
 	sessions         map[string]*IdentificationSession
@@ -40,9 +42,9 @@ func NewService(
 	searchClient *ai.GoogleSearchClient,
 	tmdbClient *TMDbClient,
 	frameExtractor *ai.FrameExtractor,
-	videoRepo database.VideoRepository,
-	frameRepo database.FrameAnalysisRepository,
-	storageService storage.Service,
+	videoRepo *database.VideoRepository,
+	frameRepo *database.FrameAnalysisRepo,
+	storageService storage.Storage,
 	config Config,
 ) *Service {
 	if config.ScoreThreshold == 0 {
@@ -67,7 +69,7 @@ func NewService(
 }
 
 func (s *Service) StartIdentification(ctx context.Context, videoID string) (*IdentificationSession, error) {
-	video, err := s.videoRepo.GetByID(ctx, videoID)
+	video, err := s.videoRepo.GetVideoByID(videoID)
 	if err != nil {
 		return nil, fmt.Errorf("getting video: %w", err)
 	}
@@ -123,10 +125,10 @@ func (s *Service) UpdateFeedback(sessionID string, chip string, selected bool) e
 	return nil
 }
 
-func (s *Service) runIdentificationLoop(ctx context.Context, session *IdentificationSession, video *database.Video) {
+func (s *Service) runIdentificationLoop(ctx context.Context, session *IdentificationSession, video *models.Video) {
 	defer close(session.Updates)
 
-	existingAnalyses, err := s.frameRepo.GetByVideoID(ctx, video.ID)
+	existingAnalysesDB, err := s.frameRepo.GetByVideoID(ctx, video.ID)
 	if err != nil {
 		log.Printf("Error getting existing analyses: %v", err)
 		session.Status = "error"
@@ -136,18 +138,24 @@ func (s *Service) runIdentificationLoop(ctx context.Context, session *Identifica
 	for frameNum := 0; frameNum < s.maxFramesAnalyze && session.Confidence < s.scoreThreshold; frameNum++ {
 		session.CurrentFrame = frameNum
 
-		var analysis *ai.FrameAnalysis
+		var analysis ai.FrameAnalysis
 
-		if frameNum < len(existingAnalyses) {
-			analysis = &existingAnalyses[frameNum]
-		} else {
-			videoPath, err := s.storageService.GetPath(video.StorageKey)
-			if err != nil {
-				log.Printf("Error getting video path: %v", err)
-				continue
+		if frameNum < len(existingAnalysesDB) {
+			dbAnalysis := existingAnalysesDB[frameNum]
+			analysis = ai.FrameAnalysis{
+				Caption:    dbAnalysis.GPTCaption,
+				TextOCR:    dbAnalysis.OCRText,
+				Faces:      []ai.FaceDetection{},
+				Confidence: 0.8,
 			}
 
-			frames, err := s.frameExtractor.ExtractFrames(ctx, videoPath, frameNum+1)
+			if len(dbAnalysis.VisionLabels) > 0 {
+				if err := json.Unmarshal(dbAnalysis.VisionLabels, &analysis.Labels); err != nil {
+					log.Printf("Error unmarshaling labels: %v", err)
+				}
+			}
+		} else {
+			frames, err := s.frameExtractor.ExtractFrames(video.Filename, frameNum+1, 512)
 			if err != nil {
 				log.Printf("Error extracting frame %d: %v", frameNum, err)
 				continue
@@ -157,20 +165,23 @@ func (s *Service) runIdentificationLoop(ctx context.Context, session *Identifica
 				continue
 			}
 
-			frameAnalysis, err := s.visionService.AnalyzeFrame(ctx, frames[len(frames)-1])
+			frameAnalysisPtr, err := s.visionService.AnalyzeFrame(ctx, frames[len(frames)-1])
 			if err != nil {
 				log.Printf("Error analyzing frame %d: %v", frameNum, err)
 				continue
 			}
 
-			if err := s.frameRepo.Create(ctx, video.ID, frameNum, frameAnalysis); err != nil {
+			dbAnalysis, err := frameAnalysisPtr.ToDB(video.ID, frameNum)
+			if err != nil {
+				log.Printf("Error converting analysis to DB format: %v", err)
+			} else if err := s.frameRepo.Create(ctx, dbAnalysis); err != nil {
 				log.Printf("Error saving frame analysis: %v", err)
 			}
 
-			analysis = &frameAnalysis
+			analysis = *frameAnalysisPtr
 		}
 
-		query := BuildSearchQuery(*analysis, session.UserFeedback)
+		query := BuildSearchQuery(analysis, session.UserFeedback)
 
 		searchResults, err := s.searchClient.SearchFilms(ctx, query)
 		if err != nil {
@@ -178,14 +189,14 @@ func (s *Service) runIdentificationLoop(ctx context.Context, session *Identifica
 			continue
 		}
 
-		candidates := s.processCandidates(ctx, searchResults, *analysis, session.UserFeedback)
+		candidates := s.processCandidates(ctx, searchResults, analysis, session.UserFeedback)
 
 		session.Candidates = candidates
 		if len(candidates) > 0 {
 			session.Confidence = candidates[0].Score
 		}
 
-		chips := s.extractChips(*analysis)
+		chips := s.extractChips(analysis)
 		session.Updates <- SessionUpdate{
 			Type: "chips",
 			Data: ChipData{
@@ -283,16 +294,6 @@ func (s *Service) processCandidates(ctx context.Context, searchResults []ai.Sear
 func (s *Service) extractChips(analysis ai.FrameAnalysis) []Chip {
 	chips := []Chip{}
 
-	for _, face := range analysis.Faces {
-		if face.Celebrity != "" {
-			chips = append(chips, Chip{
-				Value: face.Celebrity,
-				Label: face.Celebrity,
-				Type:  "actor",
-			})
-		}
-	}
-
 	if decade := detectDecade(analysis); decade != "" {
 		chips = append(chips, Chip{
 			Value: decade,
@@ -369,7 +370,7 @@ func extractGenres(analysis ai.FrameAnalysis) []string {
 
 	text := strings.ToLower(analysis.Caption)
 	for _, label := range analysis.Labels {
-		text += " " + strings.ToLower(label.Description)
+		text += " " + strings.ToLower(label.Name)
 	}
 
 	for genre := range genreKeywords {
@@ -389,8 +390,8 @@ func extractSignificantObjects(analysis ai.FrameAnalysis) []string {
 	}
 
 	for _, label := range analysis.Labels {
-		labelLower := strings.ToLower(label.Description)
-		if significantLabels[labelLower] && label.Score > 0.7 {
+		labelLower := strings.ToLower(label.Name)
+		if significantLabels[labelLower] && label.Confidence > 0.7 {
 			objects = append(objects, labelLower)
 		}
 	}

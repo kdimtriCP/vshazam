@@ -71,20 +71,7 @@ func calculateTextSimilarity(title, snippet, caption string) float64 {
 }
 
 func actorMatch(candidate FilmCandidate, faces []ai.FaceDetection) bool {
-	candidateLower := strings.ToLower(candidate.Title + " " + candidate.Snippet)
-
-	for _, face := range faces {
-		if face.Celebrity != "" {
-			nameParts := strings.Fields(strings.ToLower(face.Celebrity))
-			for _, part := range nameParts {
-				if len(part) > 3 && strings.Contains(candidateLower, part) {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
+	return len(faces) > 0 && len(faces) <= 5
 }
 
 func decadeMatch(candidateYear int, analysis ai.FrameAnalysis) bool {
@@ -113,7 +100,7 @@ func decadeMatch(candidateYear int, analysis ai.FrameAnalysis) bool {
 func detectDecade(analysis ai.FrameAnalysis) string {
 	combined := strings.ToLower(analysis.Caption)
 	for _, label := range analysis.Labels {
-		combined += " " + strings.ToLower(label.Description)
+		combined += " " + strings.ToLower(label.Name)
 	}
 
 	decades := []string{"1920s", "1930s", "1940s", "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"}
@@ -138,7 +125,7 @@ func genreMatch(candidate FilmCandidate, analysis ai.FrameAnalysis) bool {
 	candidateLower := strings.ToLower(candidate.Snippet)
 	analysisText := strings.ToLower(analysis.Caption)
 	for _, label := range analysis.Labels {
-		analysisText += " " + strings.ToLower(label.Description)
+		analysisText += " " + strings.ToLower(label.Name)
 	}
 
 	for _, genre := range genres {
@@ -185,12 +172,6 @@ func BuildSearchQuery(analysis ai.FrameAnalysis, feedback map[string]bool) strin
 
 	if analysis.Caption != "" {
 		parts = append(parts, extractKeywords(analysis.Caption)...)
-	}
-
-	for _, face := range analysis.Faces {
-		if face.Celebrity != "" {
-			parts = append(parts, face.Celebrity)
-		}
 	}
 
 	if decade := detectDecade(analysis); decade != "" {

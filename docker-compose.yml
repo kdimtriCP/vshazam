@@ -19,8 +19,10 @@ services:
       - DB_PASSWORD=vshazam_dev
       - DB_NAME=vshazam
       - UPLOAD_DIR=/app/uploads
+      - GOOGLE_VISION_SERVICE_ACCOUNT=/app/secrets/vision-sa-key.json
     volumes:
       - ./uploads:/app/uploads
+      - ~/.vision-sa-key.json:/app/secrets/vision-sa-key.json:ro
     networks:
       - vshazam-network
 

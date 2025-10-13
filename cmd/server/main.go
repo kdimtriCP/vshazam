@@ -106,10 +106,11 @@ func main() {
 
 	// AI Configuration
 	aiConfig := &ai.Config{
-		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
-		GoogleVisionKey: os.Getenv("GOOGLE_VISION_API_KEY"),
-		GoogleCSEID:     os.Getenv("GOOGLE_CSE_ID"),
-		TMDbAPIKey:      os.Getenv("TMDB_API_KEY"),
+		OpenAIAPIKey:               os.Getenv("OPENAI_API_KEY"),
+		GoogleVisionKey:            os.Getenv("GOOGLE_VISION_API_KEY"),
+		GoogleVisionServiceAccount: os.Getenv("GOOGLE_VISION_SERVICE_ACCOUNT"),
+		GoogleCSEID:                os.Getenv("GOOGLE_CSE_ID"),
+		TMDbAPIKey:                 os.Getenv("TMDB_API_KEY"),
 	}
 
 	// Parse AI configuration values
@@ -137,7 +138,7 @@ func main() {
 	var visionService ai.VisionService
 	var frameExtractor *ai.FrameExtractor
 
-	if aiConfig.OpenAIAPIKey != "" || aiConfig.GoogleVisionKey != "" {
+	if aiConfig.OpenAIAPIKey != "" || aiConfig.GoogleVisionKey != "" || aiConfig.GoogleVisionServiceAccount != "" {
 		visionService, err = ai.NewVisionService(aiConfig)
 		if err != nil {
 			log.Printf("Warning: Failed to initialize vision service: %v", err)
@@ -148,12 +149,13 @@ func main() {
 			}
 		}
 	} else {
-		log.Printf("AI services not configured. Set at least one: OPENAI_API_KEY or GOOGLE_VISION_API_KEY")
+		log.Printf("AI services not configured. Set at least one: OPENAI_API_KEY, GOOGLE_VISION_API_KEY, or GOOGLE_VISION_SERVICE_ACCOUNT")
 	}
 
 	// Initialize identification service if all required services are available
 	var identService *identification.Service
-	if visionService != nil && frameExtractor != nil && aiConfig.GoogleCSEID != "" && aiConfig.GoogleVisionKey != "" && aiConfig.TMDbAPIKey != "" {
+	hasGoogleAuth := aiConfig.GoogleVisionKey != "" || aiConfig.GoogleVisionServiceAccount != ""
+	if visionService != nil && frameExtractor != nil && aiConfig.GoogleCSEID != "" && hasGoogleAuth && aiConfig.TMDbAPIKey != "" {
 		searchClient := ai.NewGoogleSearchClient(aiConfig.GoogleVisionKey, aiConfig.GoogleCSEID)
 		tmdbClient := identification.NewTMDbClient(aiConfig.TMDbAPIKey)
 

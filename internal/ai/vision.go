@@ -10,13 +10,13 @@ type VisionService interface {
 }
 
 type FrameAnalysis struct {
-	Caption     string          `json:"caption"`
-	Labels      []Label         `json:"labels"`
-	TextOCR     []string        `json:"text_ocr"`
-	Faces       []FaceDetection `json:"faces"`
-	Colors      []ColorInfo     `json:"colors"`
-	Confidence  float64         `json:"confidence"`
-	Timestamp   time.Time       `json:"timestamp"`
+	Caption    string          `json:"caption"`
+	Labels     []Label         `json:"labels"`
+	TextOCR    []string        `json:"text_ocr"`
+	Faces      []FaceDetection `json:"faces"`
+	Colors     []ColorInfo     `json:"colors"`
+	Confidence float64         `json:"confidence"`
+	Timestamp  time.Time       `json:"timestamp"`
 }
 
 type Label struct {
@@ -43,17 +43,18 @@ type ColorInfo struct {
 }
 
 type Config struct {
-	OpenAIAPIKey     string
-	GoogleVisionKey  string
-	GoogleCSEID      string
-	TMDbAPIKey       string
-	MaxFramesPerVideo int
-	FrameSize        int
+	OpenAIAPIKey               string
+	GoogleVisionKey            string
+	GoogleVisionServiceAccount string
+	GoogleCSEID                string
+	TMDbAPIKey                 string
+	MaxFramesPerVideo          int
+	FrameSize                  int
 }
 
 func NewConfig() *Config {
 	return &Config{
 		MaxFramesPerVideo: 5,
-		FrameSize:        512,
+		FrameSize:         512,
 	}
 }

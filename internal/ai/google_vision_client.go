@@ -7,15 +7,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 const googleVisionAPIURL = "https://vision.googleapis.com/v1/images:annotate"
 
 type GoogleVisionClient struct {
-	apiKey     string
-	httpClient *http.Client
+	apiKey            string
+	httpClient        *http.Client
+	tokenSource       oauth2.TokenSource
+	useServiceAccount bool
 }
 
 func NewGoogleVisionClient(apiKey string) *GoogleVisionClient {
@@ -24,7 +30,30 @@ func NewGoogleVisionClient(apiKey string) *GoogleVisionClient {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		useServiceAccount: false,
 	}
+}
+
+func NewGoogleVisionClientWithServiceAccount(serviceAccountPath string) (*GoogleVisionClient, error) {
+	ctx := context.Background()
+
+	data, err := ioutil.ReadFile(serviceAccountPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read service account file: %w", err)
+	}
+
+	creds, err := google.CredentialsFromJSON(ctx, data, "https://www.googleapis.com/auth/cloud-vision")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credentials: %w", err)
+	}
+
+	return &GoogleVisionClient{
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		tokenSource:       creds.TokenSource,
+		useServiceAccount: true,
+	}, nil
 }
 
 type googleVisionRequest struct {
@@ -56,11 +85,11 @@ type googleError struct {
 }
 
 type annotateResponse struct {
-	LabelAnnotations     []labelAnnotation     `json:"labelAnnotations"`
-	TextAnnotations      []textAnnotation      `json:"textAnnotations"`
-	FaceAnnotations      []faceAnnotation      `json:"faceAnnotations"`
-	ImagePropertiesAnnotation *imageProperties `json:"imagePropertiesAnnotation"`
-	Error                *googleError          `json:"error"`
+	LabelAnnotations          []labelAnnotation `json:"labelAnnotations"`
+	TextAnnotations           []textAnnotation  `json:"textAnnotations"`
+	FaceAnnotations           []faceAnnotation  `json:"faceAnnotations"`
+	ImagePropertiesAnnotation *imageProperties  `json:"imagePropertiesAnnotation"`
+	Error                     *googleError      `json:"error"`
 }
 
 type labelAnnotation struct {
@@ -75,8 +104,8 @@ type textAnnotation struct {
 }
 
 type faceAnnotation struct {
-	BoundingPoly     boundingPoly `json:"boundingPoly"`
-	DetectionConfidence float64   `json:"detectionConfidence"`
+	BoundingPoly        boundingPoly `json:"boundingPoly"`
+	DetectionConfidence float64      `json:"detectionConfidence"`
 }
 
 type boundingPoly struct {
@@ -109,10 +138,10 @@ type color struct {
 }
 
 type VisionFeatures struct {
-	Labels     []Label
-	Texts      []string
-	Faces      []FaceDetection
-	Colors     []ColorInfo
+	Labels []Label
+	Texts  []string
+	Faces  []FaceDetection
+	Colors []ColorInfo
 }
 
 func (c *GoogleVisionClient) AnalyzeImage(ctx context.Context, imageData []byte) (*VisionFeatures, error) {
@@ -139,13 +168,27 @@ func (c *GoogleVisionClient) AnalyzeImage(ctx context.Context, imageData []byte)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s?key=%s", googleVisionAPIURL, c.apiKey)
+	var url string
+	if c.useServiceAccount {
+		url = googleVisionAPIURL
+	} else {
+		url = fmt.Sprintf("%s?key=%s", googleVisionAPIURL, c.apiKey)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+
+	if c.useServiceAccount && c.tokenSource != nil {
+		token, err := c.tokenSource.Token()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -201,7 +244,7 @@ func (c *GoogleVisionClient) AnalyzeImage(ctx context.Context, imageData []byte)
 		if len(face.BoundingPoly.Vertices) >= 4 {
 			minX, minY := face.BoundingPoly.Vertices[0].X, face.BoundingPoly.Vertices[0].Y
 			maxX, maxY := minX, minY
-			
+
 			for _, v := range face.BoundingPoly.Vertices {
 				if v.X < minX {
 					minX = v.X
@@ -216,7 +259,7 @@ func (c *GoogleVisionClient) AnalyzeImage(ctx context.Context, imageData []byte)
 					maxY = v.Y
 				}
 			}
-			
+
 			features.Faces = append(features.Faces, FaceDetection{
 				BoundingBox: BoundingBox{
 					X:      minX,

@@ -23,8 +23,8 @@ type VisionServiceImpl struct {
 }
 
 func NewVisionService(config *Config) (*VisionServiceImpl, error) {
-	if config.OpenAIAPIKey == "" && config.GoogleVisionKey == "" {
-		return nil, fmt.Errorf("at least one API key is required (OpenAI or Google Vision)")
+	if config.OpenAIAPIKey == "" && config.GoogleVisionKey == "" && config.GoogleVisionServiceAccount == "" {
+		return nil, fmt.Errorf("at least one API key is required (OpenAI, Google Vision API key, or Google Service Account)")
 	}
 
 	service := &VisionServiceImpl{
@@ -38,11 +38,18 @@ func NewVisionService(config *Config) (*VisionServiceImpl, error) {
 		log.Printf("OpenAI Vision service disabled (no API key)")
 	}
 
-	if config.GoogleVisionKey != "" {
+	if config.GoogleVisionServiceAccount != "" {
+		client, err := NewGoogleVisionClientWithServiceAccount(config.GoogleVisionServiceAccount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Google Vision client with service account: %w", err)
+		}
+		service.googleClient = client
+		log.Printf("Google Vision service enabled (service account: %s)", config.GoogleVisionServiceAccount)
+	} else if config.GoogleVisionKey != "" {
 		service.googleClient = NewGoogleVisionClient(config.GoogleVisionKey)
-		log.Printf("Google Vision service enabled")
+		log.Printf("Google Vision service enabled (API key)")
 	} else {
-		log.Printf("Google Vision service disabled (no API key)")
+		log.Printf("Google Vision service disabled (no API key or service account)")
 	}
 
 	return service, nil
