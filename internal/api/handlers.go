@@ -45,14 +45,15 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type App struct {
-	Storage        storage.Storage
-	DB             *database.DB
-	VideoRepo      *database.VideoRepository
-	FrameRepo      *database.FrameAnalysisRepo
-	MaxUploadSize  int64
-	VisionService  ai.VisionService
-	FrameExtractor *ai.FrameExtractor
-	AIConfig       *ai.Config
+	Storage               storage.Storage
+	DB                    *database.DB
+	VideoRepo             *database.VideoRepository
+	FrameRepo             *database.FrameAnalysisRepo
+	MaxUploadSize         int64
+	VisionService         ai.VisionService
+	FrameExtractor        *ai.FrameExtractor
+	AIConfig              *ai.Config
+	IdentificationService interface{}
 }
 
 func (app *App) UploadPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -346,19 +347,18 @@ func (app *App) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 func (app *App) analyzeVideo(video *models.Video) {
 	ctx := context.Background()
-	
+
 	uploadDir := os.Getenv("UPLOAD_DIR")
 	if uploadDir == "" {
 		uploadDir = "./uploads"
 	}
 	videoPath := filepath.Join(uploadDir, video.Filename)
-	
+
 	// Log path for debugging
 	log.Printf("Attempting to analyze video at path: %s", videoPath)
-	
+
 	// Check if file exists
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
 		log.Printf("Video file not found at %s", videoPath)

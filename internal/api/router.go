@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/kdimtricp/vshazam/internal/identification"
 )
 
 func NewRouter(app *App) http.Handler {
@@ -25,6 +26,16 @@ func NewRouter(app *App) http.Handler {
 	r.Get("/stream/{id}", app.StreamVideoHandler)
 
 	r.Get("/search", app.SearchHandler)
+
+	// Film identification routes
+	if app.IdentificationService != nil {
+		identService := app.IdentificationService.(*identification.Service)
+		identHandlers := NewIdentificationHandlers(identService)
+
+		r.Get("/identify/{id}", identHandlers.StartIdentificationHandler)
+		r.Get("/identify/{sessionID}/stream", identHandlers.IdentificationStreamHandler)
+		r.Post("/identify/{sessionID}/feedback", identHandlers.UpdateFeedbackHandler)
+	}
 
 	fileServer := http.FileServer(http.Dir("./web/static"))
 	r.Handle("/static/*", http.StripPrefix("/static", fileServer))
