@@ -109,6 +109,7 @@ func main() {
 		OpenAIAPIKey:               os.Getenv("OPENAI_API_KEY"),
 		GoogleVisionKey:            os.Getenv("GOOGLE_VISION_API_KEY"),
 		GoogleVisionServiceAccount: os.Getenv("GOOGLE_VISION_SERVICE_ACCOUNT"),
+		GoogleSearchAPIKey:         os.Getenv("GOOGLE_SEARCH_API_KEY"),
 		GoogleCSEID:                os.Getenv("GOOGLE_CSE_ID"),
 		TMDbAPIKey:                 os.Getenv("TMDB_API_KEY"),
 	}
@@ -155,8 +156,8 @@ func main() {
 	// Initialize identification service if all required services are available
 	var identService *identification.Service
 	hasGoogleAuth := aiConfig.GoogleVisionKey != "" || aiConfig.GoogleVisionServiceAccount != ""
-	if visionService != nil && frameExtractor != nil && aiConfig.GoogleCSEID != "" && hasGoogleAuth && aiConfig.TMDbAPIKey != "" {
-		searchClient := ai.NewGoogleSearchClient(aiConfig.GoogleVisionKey, aiConfig.GoogleCSEID)
+	if visionService != nil && frameExtractor != nil && aiConfig.GoogleSearchAPIKey != "" && aiConfig.GoogleCSEID != "" && hasGoogleAuth && aiConfig.TMDbAPIKey != "" {
+		searchClient := ai.NewGoogleSearchClient(aiConfig.GoogleSearchAPIKey, aiConfig.GoogleCSEID)
 		tmdbClient := identification.NewTMDbClient(aiConfig.TMDbAPIKey)
 
 		confidenceThresholdStr := os.Getenv("CONFIDENCE_THRESHOLD")
@@ -193,7 +194,7 @@ func main() {
 
 		log.Printf("Film identification service initialized (threshold: %.2f, max frames: %d)", confidenceThreshold, maxFramesAnalyze)
 	} else {
-		log.Printf("Film identification service not initialized. Required: vision service, GOOGLE_CSE_ID, TMDB_API_KEY")
+		log.Printf("Film identification service not initialized. Required: vision service, GOOGLE_SEARCH_API_KEY, GOOGLE_CSE_ID, TMDB_API_KEY")
 	}
 
 	app := &api.App{
