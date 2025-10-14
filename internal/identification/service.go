@@ -74,23 +74,27 @@ func (s *Service) StartIdentification(ctx context.Context, videoID string) (*Ide
 		return nil, fmt.Errorf("getting video: %w", err)
 	}
 
+	loopCtx, cancel := context.WithCancel(context.Background())
+
 	session := &IdentificationSession{
-		ID:           uuid.New().String(),
-		VideoID:      videoID,
-		CurrentFrame: 0,
-		Candidates:   []FilmCandidate{},
-		UserFeedback: make(map[string]bool),
-		Confidence:   0,
-		Status:       "analyzing",
-		StartedAt:    time.Now(),
-		Updates:      make(chan SessionUpdate, 100),
+		ID:              uuid.New().String(),
+		VideoID:         videoID,
+		CurrentFrame:    0,
+		Candidates:      []FilmCandidate{},
+		UserFeedback:    make(map[string]bool),
+		Confidence:      0,
+		Status:          "analyzing",
+		StartedAt:       time.Now(),
+		Updates:         make(chan SessionUpdate, 100),
+		FeedbackChanged: make(chan struct{}, 1),
+		CancelFunc:      cancel,
 	}
 
 	s.sessionsMu.Lock()
 	s.sessions[session.ID] = session
 	s.sessionsMu.Unlock()
 
-	go s.runIdentificationLoop(ctx, session, video)
+	go s.runIdentificationLoop(loopCtx, session, video)
 
 	return session, nil
 }
@@ -114,12 +118,27 @@ func (s *Service) UpdateFeedback(sessionID string, chip string, selected bool) e
 
 	session.UserFeedback[chip] = selected
 
-	session.Updates <- SessionUpdate{
-		Type: "feedback_updated",
-		Data: map[string]interface{}{
-			"chip":     chip,
-			"selected": selected,
-		},
+	select {
+	case session.FeedbackChanged <- struct{}{}:
+		log.Printf("[IDENT] Signaled feedback change for session %s", sessionID)
+	default:
+	}
+
+	return nil
+}
+
+func (s *Service) StopIdentification(sessionID string) error {
+	s.sessionsMu.Lock()
+	session, exists := s.sessions[sessionID]
+	s.sessionsMu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("session not found")
+	}
+
+	if session.CancelFunc != nil {
+		log.Printf("[IDENT] Stopping identification for session %s", sessionID)
+		session.CancelFunc()
 	}
 
 	return nil
@@ -128,15 +147,20 @@ func (s *Service) UpdateFeedback(sessionID string, chip string, selected bool) e
 func (s *Service) runIdentificationLoop(ctx context.Context, session *IdentificationSession, video *models.Video) {
 	defer close(session.Updates)
 
+	log.Printf("[IDENT] Starting identification for video %s, session %s", video.ID, session.ID)
+
 	existingAnalysesDB, err := s.frameRepo.GetByVideoID(ctx, video.ID)
 	if err != nil {
-		log.Printf("Error getting existing analyses: %v", err)
+		log.Printf("[IDENT] Error getting existing analyses: %v", err)
 		session.Status = "error"
 		return
 	}
 
+	log.Printf("[IDENT] Found %d existing frame analyses", len(existingAnalysesDB))
+
 	for frameNum := 0; frameNum < s.maxFramesAnalyze && session.Confidence < s.scoreThreshold; frameNum++ {
 		session.CurrentFrame = frameNum
+		log.Printf("[IDENT] Processing frame %d/%d", frameNum+1, s.maxFramesAnalyze)
 
 		var analysis ai.FrameAnalysis
 
@@ -155,9 +179,10 @@ func (s *Service) runIdentificationLoop(ctx context.Context, session *Identifica
 				}
 			}
 		} else {
-			frames, err := s.frameExtractor.ExtractFrames(video.Filename, frameNum+1, 512)
+			videoPath := s.storageService.GetFilePath(video.Filename)
+			frames, err := s.frameExtractor.ExtractFrames(videoPath, frameNum+1, 512)
 			if err != nil {
-				log.Printf("Error extracting frame %d: %v", frameNum, err)
+				log.Printf("[IDENT] Error extracting frame %d: %v", frameNum, err)
 				continue
 			}
 
@@ -181,65 +206,109 @@ func (s *Service) runIdentificationLoop(ctx context.Context, session *Identifica
 			analysis = *frameAnalysisPtr
 		}
 
-		query := BuildSearchQuery(analysis, session.UserFeedback)
-
-		searchResults, err := s.searchClient.SearchFilms(ctx, query)
-		if err != nil {
-			log.Printf("Error searching films: %v", err)
-			continue
-		}
-
-		candidates := s.processCandidates(ctx, searchResults, analysis, session.UserFeedback)
-
-		session.Candidates = candidates
-		if len(candidates) > 0 {
-			session.Confidence = candidates[0].Score
-		}
-
-		chips := s.extractChips(analysis)
-		session.Updates <- SessionUpdate{
-			Type: "chips",
-			Data: ChipData{
-				SessionID: session.ID,
-				Chips:     chips,
-			},
-		}
-
-		session.Updates <- SessionUpdate{
-			Type: "candidates",
-			Data: map[string]interface{}{
-				"candidates": candidates,
-				"frame":      frameNum,
-				"confidence": session.Confidence,
-			},
-		}
-
-		if session.Confidence >= s.scoreThreshold && len(candidates) > 0 {
-			filmDetails, err := s.tmdbClient.GetFilm(ctx, candidates[0].TMDbID)
-			if err != nil {
-				log.Printf("Error getting film details: %v", err)
-			} else {
-				now := time.Now()
-				session.CompletedAt = &now
-				session.Status = "complete"
-
+	feedbackReactiveLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				session.Status = "cancelled"
 				session.Updates <- SessionUpdate{
-					Type: "complete",
-					Data: IdentificationResult{
-						SessionID:   session.ID,
-						VideoID:     video.ID,
-						FilmDetails: filmDetails,
-						Confidence:  session.Confidence,
-						FramesUsed:  frameNum + 1,
-						TimeElapsed: time.Since(session.StartedAt),
+					Type: "cancelled",
+					Data: map[string]interface{}{
+						"message": "Identification cancelled by user",
 					},
 				}
 				return
+			case <-session.FeedbackChanged:
+				log.Printf("[IDENT] Feedback changed, re-searching with updated parameters")
+			default:
+			}
+
+			query := BuildSearchQuery(analysis, session.UserFeedback)
+			log.Printf("[IDENT] Search query: %s", query)
+
+			searchResults, err := s.searchClient.SearchFilms(ctx, query)
+			if err != nil {
+				log.Printf("[IDENT] Error searching films: %v", err)
+				break feedbackReactiveLoop
+			}
+
+			log.Printf("[IDENT] Found %d search results", len(searchResults))
+
+			candidates := s.processCandidates(ctx, searchResults, analysis, session.UserFeedback)
+
+			session.Candidates = candidates
+			if len(candidates) > 0 {
+				session.Confidence = candidates[0].Score
+				log.Printf("[IDENT] Generated %d candidates, top candidate: %s (score: %.2f)",
+					len(candidates), candidates[0].Title, candidates[0].Score)
+			} else {
+				log.Printf("[IDENT] No candidates generated from search results")
+			}
+
+			chips := s.extractChips(analysis, session.UserFeedback)
+			log.Printf("[IDENT] Extracted %d chips from frame analysis", len(chips))
+			session.Updates <- SessionUpdate{
+				Type: "chips",
+				Data: ChipData{
+					SessionID: session.ID,
+					Chips:     chips,
+				},
+			}
+			log.Printf("[IDENT] Sent chips update via SSE")
+
+			session.Updates <- SessionUpdate{
+				Type: "candidates",
+				Data: map[string]interface{}{
+					"candidates": candidates,
+					"frame":      frameNum,
+					"confidence": session.Confidence,
+				},
+			}
+			log.Printf("[IDENT] Sent candidates update via SSE")
+
+			if session.Confidence >= s.scoreThreshold && len(candidates) > 0 {
+				log.Printf("[IDENT] Confidence threshold reached (%.2f >= %.2f), fetching TMDb details for: %s",
+					session.Confidence, s.scoreThreshold, candidates[0].Title)
+				filmDetails, err := s.tmdbClient.GetFilm(ctx, candidates[0].TMDbID)
+				if err != nil {
+					log.Printf("[IDENT] Error getting film details: %v", err)
+				} else {
+					now := time.Now()
+					session.CompletedAt = &now
+					session.Status = "complete"
+
+					session.Updates <- SessionUpdate{
+						Type: "complete",
+						Data: IdentificationResult{
+							SessionID:   session.ID,
+							VideoID:     video.ID,
+							FilmDetails: filmDetails,
+							Confidence:  session.Confidence,
+							FramesUsed:  frameNum + 1,
+							TimeElapsed: time.Since(session.StartedAt),
+						},
+					}
+					log.Printf("[IDENT] Identification complete! Film: %s, Confidence: %.2f, Frames: %d, Time: %v",
+						filmDetails.Title, session.Confidence, frameNum+1, time.Since(session.StartedAt))
+					return
+				}
+			}
+
+			select {
+			case <-ctx.Done():
+				session.Status = "cancelled"
+				return
+			case <-session.FeedbackChanged:
+				log.Printf("[IDENT] Feedback changed while waiting, re-searching immediately")
+				continue
+			case <-time.After(500 * time.Millisecond):
+				break feedbackReactiveLoop
 			}
 		}
-
-		time.Sleep(500 * time.Millisecond)
 	}
+
+	log.Printf("[IDENT] Identification loop completed without reaching threshold. Final confidence: %.2f, Frames used: %d",
+		session.Confidence, s.maxFramesAnalyze)
 
 	session.Status = "needs_input"
 	session.Updates <- SessionUpdate{
@@ -256,8 +325,11 @@ func (s *Service) processCandidates(ctx context.Context, searchResults []ai.Sear
 	for _, result := range searchResults {
 		tmdbID := extractTMDbID(result.Link)
 		if tmdbID == "" {
+			log.Printf("[IDENT] Skipping result without TMDb ID: %s", result.Link)
 			continue
 		}
+
+		log.Printf("[IDENT] Processing candidate: %s (TMDb ID: %s)", result.Title, tmdbID)
 
 		year := extractYear(result.Title, result.Snippet)
 
@@ -291,32 +363,35 @@ func (s *Service) processCandidates(ctx context.Context, searchResults []ai.Sear
 	return candidates
 }
 
-func (s *Service) extractChips(analysis ai.FrameAnalysis) []Chip {
+func (s *Service) extractChips(analysis ai.FrameAnalysis, userFeedback map[string]bool) []Chip {
 	chips := []Chip{}
 
 	if decade := detectDecade(analysis); decade != "" {
 		chips = append(chips, Chip{
-			Value: decade,
-			Label: "Era: " + decade,
-			Type:  "decade",
+			Value:    decade,
+			Label:    "Era: " + decade,
+			Type:     "decade",
+			Selected: userFeedback[decade],
 		})
 	}
 
 	genres := extractGenres(analysis)
 	for _, genre := range genres {
 		chips = append(chips, Chip{
-			Value: genre,
-			Label: strings.Title(genre),
-			Type:  "genre",
+			Value:    genre,
+			Label:    strings.Title(genre),
+			Type:     "genre",
+			Selected: userFeedback[genre],
 		})
 	}
 
 	objects := extractSignificantObjects(analysis)
 	for _, obj := range objects {
 		chips = append(chips, Chip{
-			Value: obj,
-			Label: strings.Title(obj),
-			Type:  "object",
+			Value:    obj,
+			Label:    strings.Title(obj),
+			Type:     "object",
+			Selected: userFeedback[obj],
 		})
 	}
 
@@ -333,6 +408,7 @@ func extractTMDbID(link string) string {
 			}
 		}
 	}
+
 	return ""
 }
 

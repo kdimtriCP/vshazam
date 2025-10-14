@@ -147,19 +147,41 @@ func contains(slice []string, item string) bool {
 }
 
 func extractKeywords(caption string) []string {
+	skipPhrases := []string{
+		"i'm unable to identify",
+		"unable to identify",
+		"unable identify",
+		"cannot identify",
+		"can't identify",
+		"i cannot",
+		"specific movie",
+		"specific movies",
+		"recognize people",
+		"however provide",
+		"however give",
+	}
+
+	captionLower := strings.ToLower(caption)
+	for _, phrase := range skipPhrases {
+		captionLower = strings.ReplaceAll(captionLower, phrase, "")
+	}
+
 	stopWords := map[string]bool{
 		"the": true, "a": true, "an": true, "and": true, "or": true,
 		"but": true, "in": true, "on": true, "at": true, "to": true,
 		"for": true, "of": true, "with": true, "is": true, "are": true,
-		"was": true, "were": true, "been": true, "be": true,
+		"was": true, "were": true, "been": true, "be": true, "this": true,
+		"that": true, "from": true, "have": true, "has": true, "had": true,
+		"will": true, "would": true, "could": true, "should": true,
+		"images": true, "image": true, "frame": true, "scene": true, "provide": true,
 	}
 
-	words := strings.Fields(strings.ToLower(caption))
+	words := strings.Fields(captionLower)
 	keywords := []string{}
 
 	for _, word := range words {
-		word = strings.Trim(word, ".,!?;:'\"")
-		if len(word) > 3 && !stopWords[word] {
+		word = strings.Trim(word, ".,!?;:'\"*")
+		if len(word) > 4 && !stopWords[word] {
 			keywords = append(keywords, word)
 		}
 	}
@@ -170,12 +192,19 @@ func extractKeywords(caption string) []string {
 func BuildSearchQuery(analysis ai.FrameAnalysis, feedback map[string]bool) string {
 	parts := []string{}
 
-	if analysis.Caption != "" {
-		parts = append(parts, extractKeywords(analysis.Caption)...)
+	keywords := extractKeywords(analysis.Caption)
+	if len(keywords) > 8 {
+		keywords = keywords[:8]
 	}
+	parts = append(parts, keywords...)
 
 	if decade := detectDecade(analysis); decade != "" {
 		parts = append(parts, decade)
+	}
+
+	genres := extractGenres(analysis)
+	if len(genres) > 0 {
+		parts = append(parts, genres[0])
 	}
 
 	for chip, selected := range feedback {
@@ -183,8 +212,6 @@ func BuildSearchQuery(analysis ai.FrameAnalysis, feedback map[string]bool) strin
 			parts = append(parts, chip)
 		}
 	}
-
-	parts = append(parts, "movie")
 
 	uniqueParts := make(map[string]bool)
 	result := []string{}
@@ -195,5 +222,6 @@ func BuildSearchQuery(analysis ai.FrameAnalysis, feedback map[string]bool) strin
 		}
 	}
 
-	return strings.Join(result, " ")
+	query := strings.Join(result, " ")
+	return query + " movie site:themoviedb.org"
 }

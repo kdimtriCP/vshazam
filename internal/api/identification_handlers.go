@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kdimtricp/vshazam/internal/identification"
@@ -79,24 +80,35 @@ func (h *IdentificationHandlers) IdentificationStreamHandler(w http.ResponseWrit
 	}
 
 	clientGone := r.Context().Done()
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	log.Printf("[SSE] Client connected to session %s", sessionID)
 
 	for {
 		select {
 		case update, ok := <-session.Updates:
 			if !ok {
+				log.Printf("[SSE] Session %s updates channel closed", sessionID)
 				return
 			}
 
 			data, err := json.Marshal(update.Data)
 			if err != nil {
-				log.Printf("Error marshaling update: %v", err)
+				log.Printf("[SSE] Error marshaling update: %v", err)
 				continue
 			}
 
+			log.Printf("[SSE] Sending event '%s' to session %s", update.Type, sessionID)
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", update.Type, string(data))
 			flusher.Flush()
 
+		case <-ticker.C:
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			flusher.Flush()
+
 		case <-clientGone:
+			log.Printf("[SSE] Client disconnected from session %s", sessionID)
 			return
 		}
 	}
@@ -113,13 +125,19 @@ func (h *IdentificationHandlers) UpdateFeedbackHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	session, exists := h.identService.GetSession(sessionID)
-	if !exists {
-		http.Error(w, "Session not found", http.StatusNotFound)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *IdentificationHandlers) StopIdentificationHandler(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+
+	if err := h.identService.StopIdentification(sessionID); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to stop: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	h.renderIdentificationPartial(w, session)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Identification stopped")
 }
 
 func (h *IdentificationHandlers) renderIdentificationPartial(w http.ResponseWriter, session *identification.IdentificationSession) {

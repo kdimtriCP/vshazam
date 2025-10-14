@@ -46,6 +46,7 @@ type Config struct {
 	OpenAIAPIKey               string
 	GoogleVisionKey            string
 	GoogleVisionServiceAccount string
+	GoogleSearchAPIKey         string
 	GoogleCSEID                string
 	TMDbAPIKey                 string
 	MaxFramesPerVideo          int

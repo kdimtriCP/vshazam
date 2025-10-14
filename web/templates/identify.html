@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Film Identification - VShazam</title>
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
-    <script src="https://unpkg.com/htmx-ext-sse@2.0.0/sse.js"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -195,45 +195,63 @@
         <h1>Film Identification</h1>
         
         <div class="video-preview">
-            <video src="/stream/{{.VideoID}}" width="600" controls></video>
+            <video src="/stream/{{.VideoID}}" width="600" controls autoplay></video>
         </div>
-        
+
         <div id="identification-container" hx-ext="sse" sse-connect="/identify/{{.SessionID}}/stream">
             <div class="progress-container">
                 <div class="progress-bar-wrapper">
                     <div class="progress-bar" style="width: {{.Progress}}%"></div>
                 </div>
                 <span class="status-text">{{.Status}}</span>
+
+                <button id="stop-btn"
+                        hx-post="/identify/{{.SessionID}}/stop"
+                        hx-swap="none"
+                        style="margin-top: 10px; padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Stop Identification
+                </button>
             </div>
             
-            <div id="chips-container" sse-swap="chips" class="chips-container">
+            <div id="chips-container" class="chips-container">
                 <!-- Chips will be dynamically loaded here -->
             </div>
-            
-            <div id="results-container" sse-swap="candidates" class="results-container">
+
+            <div id="results-container" class="results-container">
                 <!-- Film candidates will be dynamically loaded here -->
             </div>
-            
-            <div id="complete-container" sse-swap="complete" style="display: none;">
+
+            <div id="complete-container" style="display: none;">
                 <!-- Complete film details will be loaded here -->
             </div>
         </div>
     </div>
     
     <script>
+        console.log('Script loaded, setting up SSE event listeners');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, HTMX version:', htmx.version);
+        });
+
         document.body.addEventListener('sse:chips', function(event) {
+            console.log('sse:chips event received:', event);
+            console.log('Event detail:', event.detail);
+
             const data = JSON.parse(event.detail.data);
+            console.log('Parsed chips data:', data);
+
             const container = document.getElementById('chips-container');
-            
+
             if (data.Chips && data.Chips.length > 0) {
+                console.log('Rendering', data.Chips.length, 'chips');
                 let html = '<h3>Refine your search:</h3><div class="chips">';
                 data.Chips.forEach(chip => {
                     html += `
                         <button class="chip ${chip.Selected ? 'selected' : ''}"
                                 hx-post="/identify/${data.SessionID}/feedback"
                                 hx-vals='{"chip": "${chip.Value}", "selected": "${!chip.Selected}"}'
-                                hx-target="#identification-container"
-                                hx-swap="outerHTML">
+                                hx-swap="none">
                             ${chip.Label}
                         </button>
                     `;
@@ -241,19 +259,27 @@
                 html += '</div>';
                 container.innerHTML = html;
                 htmx.process(container);
+                console.log('Chips rendered successfully');
+            } else {
+                console.log('No chips in data');
             }
         });
-        
+
         document.body.addEventListener('sse:candidates', function(event) {
+            console.log('sse:candidates event received:', event);
+
             const data = JSON.parse(event.detail.data);
+            console.log('Parsed candidates data:', data);
+
             const container = document.getElementById('results-container');
             const progressBar = document.querySelector('.progress-bar');
             const statusText = document.querySelector('.status-text');
-            
+
             progressBar.style.width = Math.round(data.confidence * 100) + '%';
             statusText.textContent = `Analyzing frame ${data.frame + 1}... (${Math.round(data.confidence * 100)}% confidence)`;
-            
+
             if (data.candidates && data.candidates.length > 0) {
+                console.log('Rendering', data.candidates.length, 'candidates');
                 let html = '<h3>Possible matches:</h3>';
                 data.candidates.forEach(candidate => {
                     html += `
@@ -262,8 +288,8 @@
                                 <div class="film-title">${candidate.Title}</div>
                                 <div class="film-year">${candidate.Year || 'Unknown year'}</div>
                                 <div class="film-snippet">${candidate.Snippet}</div>
-                                ${candidate.MatchedOn && candidate.MatchedOn.length > 0 ? 
-                                    '<div class="matched-tags">' + 
+                                ${candidate.MatchedOn && candidate.MatchedOn.length > 0 ?
+                                    '<div class="matched-tags">' +
                                     candidate.MatchedOn.map(tag => `<span class="matched-tag">${tag}</span>`).join('') +
                                     '</div>' : ''}
                             </div>
@@ -272,18 +298,25 @@
                     `;
                 });
                 container.innerHTML = html;
+                console.log('Candidates rendered successfully');
             }
         });
-        
+
         document.body.addEventListener('sse:complete', function(event) {
+            console.log('sse:complete event received:', event);
+
             const data = JSON.parse(event.detail.data);
+            console.log('Parsed complete data:', data);
+
             const container = document.getElementById('complete-container');
             const progressBar = document.querySelector('.progress-bar');
             const statusText = document.querySelector('.status-text');
-            
+            const stopBtn = document.getElementById('stop-btn');
+
             progressBar.style.width = '100%';
             statusText.textContent = 'Film identified!';
-            
+            if (stopBtn) stopBtn.style.display = 'none';
+
             const film = data.FilmDetails;
             let html = `
                 <div class="complete-message">
@@ -295,7 +328,7 @@
                         <p><strong>Confidence:</strong> ${Math.round(data.Confidence * 100)}%</p>
                         <p><strong>Frames analyzed:</strong> ${data.FramesUsed}</p>
                         <p><strong>Time elapsed:</strong> ${Math.round(data.TimeElapsed / 1000000000)}s</p>
-                        ${film.Genres && film.Genres.length > 0 ? 
+                        ${film.Genres && film.Genres.length > 0 ?
                             '<p><strong>Genres:</strong> ' + film.Genres.map(g => g.Name).join(', ') + '</p>' : ''}
                         ${film.Credits && film.Credits.Cast && film.Credits.Cast.length > 0 ?
                             '<p><strong>Cast:</strong> ' + film.Credits.Cast.slice(0, 5).map(c => c.Name).join(', ') + '</p>' : ''}
@@ -306,17 +339,45 @@
             `;
             container.innerHTML = html;
             container.style.display = 'block';
-            
+
             // Hide chips and candidates
             document.getElementById('chips-container').style.display = 'none';
             document.getElementById('results-container').style.display = 'none';
         });
-        
+
+        document.body.addEventListener('sse:cancelled', function(event) {
+            const statusText = document.querySelector('.status-text');
+            const stopBtn = document.getElementById('stop-btn');
+            statusText.textContent = 'Identification cancelled';
+            if (stopBtn) stopBtn.style.display = 'none';
+        });
+
         document.body.addEventListener('sse:needs_input', function(event) {
+            console.log('sse:needs_input event received:', event);
             const data = JSON.parse(event.detail.data);
             const statusText = document.querySelector('.status-text');
+            const stopBtn = document.getElementById('stop-btn');
             statusText.textContent = data.message;
+            if (stopBtn) stopBtn.style.display = 'none';
         });
+
+        document.body.addEventListener('htmx:sseBeforeMessage', function(event) {
+            console.log('HTMX SSE raw message:', event.detail);
+        });
+
+        document.body.addEventListener('htmx:sseError', function(event) {
+            console.error('HTMX SSE error:', event.detail);
+        });
+
+        document.body.addEventListener('htmx:sseOpen', function(event) {
+            console.log('HTMX SSE connection opened:', event.detail);
+        });
+
+        document.body.addEventListener('htmx:sseClose', function(event) {
+            console.log('HTMX SSE connection closed:', event.detail);
+        });
+
+        console.log('All SSE event listeners registered');
     </script>
 </body>
 </html>

@@ -73,3 +73,8 @@ func (ls *LocalStorage) DeleteFile(path string) error {
 
 	return nil
 }
+
+func (ls *LocalStorage) GetFilePath(filename string) string {
+	cleanPath := filepath.Clean(filename)
+	return filepath.Join(ls.basePath, cleanPath)
+}

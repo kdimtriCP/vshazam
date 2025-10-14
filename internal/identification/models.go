@@ -1,20 +1,23 @@
 package identification
 
 import (
+	"context"
 	"time"
 )
 
 type IdentificationSession struct {
-	ID           string
-	VideoID      string
-	CurrentFrame int
-	Candidates   []FilmCandidate
-	UserFeedback map[string]bool
-	Confidence   float64
-	Status       string
-	StartedAt    time.Time
-	CompletedAt  *time.Time
-	Updates      chan SessionUpdate
+	ID              string
+	VideoID         string
+	CurrentFrame    int
+	Candidates      []FilmCandidate
+	UserFeedback    map[string]bool
+	Confidence      float64
+	Status          string
+	StartedAt       time.Time
+	CompletedAt     *time.Time
+	Updates         chan SessionUpdate
+	FeedbackChanged chan struct{}
+	CancelFunc      context.CancelFunc
 }
 
 type FilmCandidate struct {

@@ -15,4 +15,5 @@ type Storage interface {
 	SaveFile(file multipart.File, info FileInfo) (string, error)
 	OpenFile(path string) (io.ReadSeekCloser, error)
 	DeleteFile(path string) error
+	GetFilePath(filename string) string
 }

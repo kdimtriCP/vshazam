@@ -35,6 +35,7 @@ func NewRouter(app *App) http.Handler {
 		r.Get("/identify/{id}", identHandlers.StartIdentificationHandler)
 		r.Get("/identify/{sessionID}/stream", identHandlers.IdentificationStreamHandler)
 		r.Post("/identify/{sessionID}/feedback", identHandlers.UpdateFeedbackHandler)
+		r.Post("/identify/{sessionID}/stop", identHandlers.StopIdentificationHandler)
 	}
 
 	fileServer := http.FileServer(http.Dir("./web/static"))
