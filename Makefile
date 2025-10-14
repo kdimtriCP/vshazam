@@ -91,3 +91,5 @@ docker-migrate:
 
 docker-migrate-status:
 	docker-compose exec app go run cmd/migrate/main.go -status
+
+docker-rebuild-run: docker-down docker-build docker-up
