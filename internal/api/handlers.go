@@ -45,15 +45,14 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type App struct {
-	Storage               storage.Storage
-	DB                    *database.DB
-	VideoRepo             *database.VideoRepository
-	FrameRepo             *database.FrameAnalysisRepo
-	MaxUploadSize         int64
-	VisionService         ai.VisionService
-	FrameExtractor        *ai.FrameExtractor
-	AIConfig              *ai.Config
-	IdentificationService interface{}
+	Storage        storage.Storage
+	DB             *database.DB
+	VideoRepo      *database.VideoRepository
+	FrameRepo      *database.FrameAnalysisRepo
+	MaxUploadSize  int64
+	VisionService  ai.VisionService
+	FrameExtractor *ai.FrameExtractor
+	AIConfig       *ai.Config
 }
 
 func (app *App) UploadPageHandler(w http.ResponseWriter, r *http.Request) {
