@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/kdimtricp/vshazam/internal/ai"
+	"github.com/kdimtricp/vshazam/internal/models/frame_analysis"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -18,7 +18,7 @@ func NewFrameAnalysisRepo(db *DB) *FrameAnalysisRepo {
 	return &FrameAnalysisRepo{db: db}
 }
 
-func (r *FrameAnalysisRepo) Create(ctx context.Context, analysis *ai.FrameAnalysisDB) error {
+func (r *FrameAnalysisRepo) Create(ctx context.Context, analysis *frame_analysis.FrameAnalysisDB) error {
 	if analysis.ID == "" {
 		analysis.ID = uuid.New().String()
 	}
@@ -38,8 +38,8 @@ func (r *FrameAnalysisRepo) Create(ctx context.Context, analysis *ai.FrameAnalys
 	return result.Error
 }
 
-func (r *FrameAnalysisRepo) GetByVideoID(ctx context.Context, videoID string) ([]*ai.FrameAnalysisDB, error) {
-	var analyses []*ai.FrameAnalysisDB
+func (r *FrameAnalysisRepo) GetByVideoID(ctx context.Context, videoID string) ([]*frame_analysis.FrameAnalysisDB, error) {
+	var analyses []*frame_analysis.FrameAnalysisDB
 	result := r.db.GORM().WithContext(ctx).
 		Where("video_id = ?", videoID).
 		Order("frame_number").
@@ -52,8 +52,8 @@ func (r *FrameAnalysisRepo) GetByVideoID(ctx context.Context, videoID string) ([
 	return analyses, nil
 }
 
-func (r *FrameAnalysisRepo) GetByID(ctx context.Context, id string) (*ai.FrameAnalysisDB, error) {
-	var analysis ai.FrameAnalysisDB
+func (r *FrameAnalysisRepo) GetByID(ctx context.Context, id string) (*frame_analysis.FrameAnalysisDB, error) {
+	var analysis frame_analysis.FrameAnalysisDB
 	result := r.db.GORM().WithContext(ctx).First(&analysis, "id = ?", id)
 
 	if result.Error != nil {
@@ -67,6 +67,6 @@ func (r *FrameAnalysisRepo) GetByID(ctx context.Context, id string) (*ai.FrameAn
 }
 
 func (r *FrameAnalysisRepo) DeleteByVideoID(ctx context.Context, videoID string) error {
-	result := r.db.GORM().WithContext(ctx).Where("video_id = ?", videoID).Delete(&ai.FrameAnalysisDB{})
+	result := r.db.GORM().WithContext(ctx).Where("video_id = ?", videoID).Delete(&frame_analysis.FrameAnalysisDB{})
 	return result.Error
 }

@@ -89,7 +89,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations
 	migrationsPath := os.Getenv("MIGRATIONS_PATH")
 	if migrationsPath == "" {
 		migrationsPath = "./migrations"
@@ -103,7 +102,6 @@ func main() {
 	videoRepo := database.NewVideoRepository(db)
 	frameRepo := database.NewFrameAnalysisRepo(db)
 
-	// AI Configuration
 	aiConfig := &ai.Config{
 		OpenAIAPIKey:               os.Getenv("OPENAI_API_KEY"),
 		GoogleVisionKey:            os.Getenv("GOOGLE_VISION_API_KEY"),
@@ -113,7 +111,6 @@ func main() {
 		TMDbAPIKey:                 os.Getenv("TMDB_API_KEY"),
 	}
 
-	// Parse AI configuration values
 	maxFramesStr := os.Getenv("MAX_FRAMES_PER_VIDEO")
 	if maxFramesStr != "" {
 		if maxFrames, err := strconv.Atoi(maxFramesStr); err == nil {
@@ -134,7 +131,6 @@ func main() {
 		aiConfig.FrameSize = 512
 	}
 
-	// Initialize AI services if API keys are provided
 	var visionService ai.VisionService
 	var frameExtractor *ai.FrameExtractor
 

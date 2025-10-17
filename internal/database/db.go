@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/kdimtricp/vshazam/internal/models/frame_analysis"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/models"
 )
 
@@ -58,7 +58,7 @@ func NewDB(config Config) (*DB, error) {
 
 	db := &DB{gormDB: gormDB, conn: sqlDB, dbType: config.Type}
 
-	if err := gormDB.AutoMigrate(&models.Video{}, &ai.FrameAnalysisDB{}); err != nil {
+	if err := gormDB.AutoMigrate(&models.Video{}, &frame_analysis.FrameAnalysisDB{}); err != nil {
 		return nil, fmt.Errorf("failed to auto migrate: %w", err)
 	}
 

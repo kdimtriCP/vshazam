@@ -7,13 +7,17 @@ import (
 )
 
 type Video struct {
-	ID          string
-	Title       string
-	Description string
-	Filename    string
-	ContentType string
-	Size        int64
-	UploadTime  time.Time
+	ID          string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	Title       string    `gorm:"not null"`
+	Description string    `gorm:"type:text"`
+	Filename    string    `gorm:"not null"`
+	ContentType string    `gorm:"not null"`
+	Size        int64     `gorm:"not null"`
+	UploadTime  time.Time `gorm:"not null;index"`
+}
+
+func (Video) TableName() string {
+	return "videos"
 }
 
 func NewVideo(title, description, filename, contentType string, size int64) *Video {

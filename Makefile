@@ -20,6 +20,10 @@ test-unit:
 test-integration:
 	go test ./tests/integration/... -v
 
+# Run repository integration tests with PostgreSQL (uses testcontainers)
+test-repo:
+	go test -v ./internal/database/... -timeout 120s
+
 # Run tests with coverage
 test-coverage:
 	go test -coverprofile=coverage.out ./...

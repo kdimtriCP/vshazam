@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/models"
+	"github.com/kdimtricp/vshazam/internal/models/frame_analysis"
 )
 
 func TestFrameAnalysisRepo_Create(t *testing.T) {
@@ -23,7 +23,7 @@ func TestFrameAnalysisRepo_Create(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	analysis := &ai.FrameAnalysisDB{
+	analysis := &frame_analysis.FrameAnalysisDB{
 		VideoID:      video.ID,
 		FrameNumber:  1,
 		GPTCaption:   "A test frame",
@@ -69,7 +69,7 @@ func TestFrameAnalysisRepo_Create_Upsert(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	analysis1 := &ai.FrameAnalysisDB{
+	analysis1 := &frame_analysis.FrameAnalysisDB{
 		VideoID:      video.ID,
 		FrameNumber:  1,
 		GPTCaption:   "Original caption",
@@ -84,7 +84,7 @@ func TestFrameAnalysisRepo_Create_Upsert(t *testing.T) {
 		t.Fatalf("Failed to create first analysis: %v", err)
 	}
 
-	analysis2 := &ai.FrameAnalysisDB{
+	analysis2 := &frame_analysis.FrameAnalysisDB{
 		VideoID:      video.ID,
 		FrameNumber:  1,
 		GPTCaption:   "Updated caption",
@@ -131,7 +131,7 @@ func TestFrameAnalysisRepo_GetByVideoID(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		analysis := &ai.FrameAnalysisDB{
+		analysis := &frame_analysis.FrameAnalysisDB{
 			VideoID:      video.ID,
 			FrameNumber:  i,
 			GPTCaption:   "Frame " + string(rune('0'+i)),
@@ -194,7 +194,7 @@ func TestFrameAnalysisRepo_DeleteByVideoID(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		analysis := &ai.FrameAnalysisDB{
+		analysis := &frame_analysis.FrameAnalysisDB{
 			VideoID:      video.ID,
 			FrameNumber:  i,
 			GPTCaption:   "Frame",
@@ -239,7 +239,7 @@ func TestFrameAnalysisRepo_OCRTextHandling(t *testing.T) {
 
 	ctx := context.Background()
 
-	analysis := &ai.FrameAnalysisDB{
+	analysis := &frame_analysis.FrameAnalysisDB{
 		VideoID:      video.ID,
 		FrameNumber:  1,
 		GPTCaption:   "Test",

@@ -1,10 +1,8 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +14,17 @@ import (
 	"github.com/kdimtricp/vshazam/internal/models"
 	"github.com/kdimtricp/vshazam/internal/storage"
 )
+
+type App struct {
+	Storage        storage.Storage
+	DB             *database.DB
+	VideoRepo      *database.VideoRepository
+	FrameRepo      *database.FrameAnalysisRepo
+	MaxUploadSize  int64
+	VisionService  ai.VisionService
+	FrameExtractor *ai.FrameExtractor
+	AIConfig       *ai.Config
+}
 
 func PingHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -44,17 +53,6 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type App struct {
-	Storage        storage.Storage
-	DB             *database.DB
-	VideoRepo      *database.VideoRepository
-	FrameRepo      *database.FrameAnalysisRepo
-	MaxUploadSize  int64
-	VisionService  ai.VisionService
-	FrameExtractor *ai.FrameExtractor
-	AIConfig       *ai.Config
-}
-
 func (app *App) UploadPageHandler(w http.ResponseWriter, r *http.Request) {
 	tmplPath := filepath.Join("web", "templates", "upload.html")
 	tmpl, err := template.ParseFiles(tmplPath)
@@ -73,13 +71,13 @@ func (app *App) UploadHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, app.MaxUploadSize)
 
 	if err := r.ParseMultipartForm(app.MaxUploadSize); err != nil {
-		app.renderError(w, "File too large")
+		app.renderError(w, "File too large", http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("video")
 	if err != nil {
-		app.renderError(w, "Failed to get file")
+		app.renderError(w, "Failed to get file", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -88,7 +86,7 @@ func (app *App) UploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(contentType, "video/") && contentType != "application/octet-stream" {
 		ext := strings.ToLower(filepath.Ext(header.Filename))
 		if ext != ".mp4" {
-			app.renderError(w, "Only MP4 video files are allowed")
+			app.renderError(w, "Only MP4 video files are allowed", http.StatusBadRequest)
 			return
 		}
 		contentType = "video/mp4"
@@ -96,7 +94,7 @@ func (app *App) UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	title := r.FormValue("title")
 	if title == "" {
-		app.renderError(w, "Title is required")
+		app.renderError(w, "Title is required", http.StatusBadRequest)
 		return
 	}
 
@@ -108,20 +106,15 @@ func (app *App) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		Size:        header.Size,
 	})
 	if err != nil {
-		app.renderError(w, "Failed to save file")
+		app.renderError(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
 
 	video := models.NewVideo(title, description, filename, contentType, header.Size)
 	if err := app.VideoRepo.InsertVideo(video); err != nil {
 		app.Storage.DeleteFile(filename)
-		app.renderError(w, "Failed to save video information")
+		app.renderError(w, "Failed to save video information", http.StatusInternalServerError)
 		return
-	}
-
-	// Trigger AI analysis if services are configured
-	if app.VisionService != nil && app.FrameExtractor != nil {
-		go app.analyzeVideo(video)
 	}
 
 	app.renderSuccess(w, "Video uploaded successfully!")
@@ -143,50 +136,11 @@ func (app *App) VideoListPartialHandler(w http.ResponseWriter, r *http.Request) 
 	tmplPath := filepath.Join("web", "templates", "_video_item.html")
 	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
-		for _, video := range videos {
-			fmt.Fprintf(w, `<div class="video-item">
-				<h4>%s</h4>
-				<p>%s</p>
-				<small>Size: %s | Uploaded: %s</small>
-			</div>`,
-				template.HTMLEscapeString(video.Title),
-				template.HTMLEscapeString(video.Description),
-				formatFileSize(video.Size),
-				video.UploadTime.Format("Jan 2, 2006 15:04"))
-		}
-		return
+		app.renderError(w, "Error loading template", http.StatusInternalServerError)
 	}
 
 	for _, video := range videos {
 		tmpl.Execute(w, video)
-	}
-}
-
-func (app *App) renderError(w http.ResponseWriter, message string) {
-	w.WriteHeader(http.StatusBadRequest)
-	fmt.Fprintf(w, `<div class="alert alert-error">%s</div>`, template.HTMLEscapeString(message))
-}
-
-func (app *App) renderSuccess(w http.ResponseWriter, message string) {
-	fmt.Fprintf(w, `<div class="alert alert-success">%s</div>`, template.HTMLEscapeString(message))
-}
-
-func formatFileSize(size int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-
-	switch {
-	case size >= GB:
-		return fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
-	case size >= MB:
-		return fmt.Sprintf("%.2f MB", float64(size)/float64(MB))
-	case size >= KB:
-		return fmt.Sprintf("%.2f KB", float64(size)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", size)
 	}
 }
 
@@ -223,13 +177,13 @@ func (app *App) ListVideosHandler(w http.ResponseWriter, r *http.Request) {
 func (app *App) WatchVideoHandler(w http.ResponseWriter, r *http.Request) {
 	videoID := chi.URLParam(r, "id")
 	if videoID == "" {
-		http.NotFound(w, r)
+		app.renderError(w, "Video ID is required", http.StatusBadRequest)
 		return
 	}
 
 	video, err := app.VideoRepo.GetVideoByID(videoID)
 	if err != nil {
-		http.NotFound(w, r)
+		app.renderError(w, "Error loading video", http.StatusInternalServerError)
 		return
 	}
 
@@ -245,7 +199,7 @@ func (app *App) WatchVideoHandler(w http.ResponseWriter, r *http.Request) {
 		FormattedSize string
 	}{
 		Video:         video,
-		FormattedSize: formatFileSize(video.Size),
+		FormattedSize: storage.FormatFileSize(video.Size),
 	}
 
 	if err := tmpl.Execute(w, data); err != nil {
@@ -346,50 +300,12 @@ func (app *App) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *App) analyzeVideo(video *models.Video) {
-	ctx := context.Background()
+func (app *App) renderError(w http.ResponseWriter, message string, code int) {
+	w.WriteHeader(code)
+	fmt.Fprintf(w, `<div class="alert alert-error">%s</div>`, template.HTMLEscapeString(message))
+}
 
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		uploadDir = "./uploads"
-	}
-	videoPath := filepath.Join(uploadDir, video.Filename)
-
-	// Log path for debugging
-	log.Printf("Attempting to analyze video at path: %s", videoPath)
-
-	// Check if file exists
-	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
-		log.Printf("Video file not found at %s", videoPath)
-		return
-	}
-
-	frames, err := app.FrameExtractor.ExtractFrames(videoPath, app.AIConfig.MaxFramesPerVideo, app.AIConfig.FrameSize)
-	if err != nil {
-		log.Printf("Failed to extract frames for video %s: %v", video.ID, err)
-		return
-	}
-
-	log.Printf("Extracted %d frames from video %s", len(frames), video.ID)
-
-	for i, frameData := range frames {
-		analysis, err := app.VisionService.AnalyzeFrame(ctx, frameData)
-		if err != nil {
-			log.Printf("Failed to analyze frame %d for video %s: %v", i, video.ID, err)
-			continue
-		}
-
-		dbAnalysis, err := analysis.ToDB(video.ID, i)
-		if err != nil {
-			log.Printf("Failed to convert analysis to DB format for video %s frame %d: %v", video.ID, i, err)
-			continue
-		}
-
-		if err := app.FrameRepo.Create(ctx, dbAnalysis); err != nil {
-			log.Printf("Failed to save analysis for video %s frame %d: %v", video.ID, i, err)
-			continue
-		}
-
-		log.Printf("Successfully analyzed frame %d for video %s (confidence: %.2f)", i, video.ID, analysis.Confidence)
-	}
+func (app *App) renderSuccess(w http.ResponseWriter, message string) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `<div class="alert alert-success">%s</div>`, template.HTMLEscapeString(message))
 }
