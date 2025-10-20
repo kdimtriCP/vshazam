@@ -9,7 +9,6 @@ import (
 	"github.com/kdimtricp/vshazam/internal/ai"
 	"github.com/kdimtricp/vshazam/internal/api"
 	"github.com/kdimtricp/vshazam/internal/database"
-	"github.com/kdimtricp/vshazam/internal/identification"
 	"github.com/kdimtricp/vshazam/internal/storage"
 )
 
@@ -90,7 +89,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations
 	migrationsPath := os.Getenv("MIGRATIONS_PATH")
 	if migrationsPath == "" {
 		migrationsPath = "./migrations"
@@ -104,7 +102,6 @@ func main() {
 	videoRepo := database.NewVideoRepository(db)
 	frameRepo := database.NewFrameAnalysisRepo(db)
 
-	// AI Configuration
 	aiConfig := &ai.Config{
 		OpenAIAPIKey:               os.Getenv("OPENAI_API_KEY"),
 		GoogleVisionKey:            os.Getenv("GOOGLE_VISION_API_KEY"),
@@ -114,7 +111,6 @@ func main() {
 		TMDbAPIKey:                 os.Getenv("TMDB_API_KEY"),
 	}
 
-	// Parse AI configuration values
 	maxFramesStr := os.Getenv("MAX_FRAMES_PER_VIDEO")
 	if maxFramesStr != "" {
 		if maxFrames, err := strconv.Atoi(maxFramesStr); err == nil {
@@ -135,7 +131,6 @@ func main() {
 		aiConfig.FrameSize = 512
 	}
 
-	// Initialize AI services if API keys are provided
 	var visionService ai.VisionService
 	var frameExtractor *ai.FrameExtractor
 
@@ -153,60 +148,15 @@ func main() {
 		log.Printf("AI services not configured. Set at least one: OPENAI_API_KEY, GOOGLE_VISION_API_KEY, or GOOGLE_VISION_SERVICE_ACCOUNT")
 	}
 
-	// Initialize identification service if all required services are available
-	var identService *identification.Service
-	hasGoogleAuth := aiConfig.GoogleVisionKey != "" || aiConfig.GoogleVisionServiceAccount != ""
-	if visionService != nil && frameExtractor != nil && aiConfig.GoogleSearchAPIKey != "" && aiConfig.GoogleCSEID != "" && hasGoogleAuth && aiConfig.TMDbAPIKey != "" {
-		searchClient := ai.NewGoogleSearchClient(aiConfig.GoogleSearchAPIKey, aiConfig.GoogleCSEID)
-		tmdbClient := identification.NewTMDbClient(aiConfig.TMDbAPIKey)
-
-		confidenceThresholdStr := os.Getenv("CONFIDENCE_THRESHOLD")
-		confidenceThreshold := 0.9
-		if confidenceThresholdStr != "" {
-			if val, err := strconv.ParseFloat(confidenceThresholdStr, 64); err == nil {
-				confidenceThreshold = val
-			}
-		}
-
-		maxFramesAnalyzeStr := os.Getenv("MAX_FRAMES_ANALYZE")
-		maxFramesAnalyze := 10
-		if maxFramesAnalyzeStr != "" {
-			if val, err := strconv.Atoi(maxFramesAnalyzeStr); err == nil {
-				maxFramesAnalyze = val
-			}
-		}
-
-		identConfig := identification.Config{
-			ScoreThreshold:   confidenceThreshold,
-			MaxFramesAnalyze: maxFramesAnalyze,
-		}
-
-		identService = identification.NewService(
-			visionService,
-			searchClient,
-			tmdbClient,
-			frameExtractor,
-			videoRepo,
-			frameRepo,
-			localStorage,
-			identConfig,
-		)
-
-		log.Printf("Film identification service initialized (threshold: %.2f, max frames: %d)", confidenceThreshold, maxFramesAnalyze)
-	} else {
-		log.Printf("Film identification service not initialized. Required: vision service, GOOGLE_SEARCH_API_KEY, GOOGLE_CSE_ID, TMDB_API_KEY")
-	}
-
 	app := &api.App{
-		Storage:               localStorage,
-		DB:                    db,
-		VideoRepo:             videoRepo,
-		FrameRepo:             frameRepo,
-		MaxUploadSize:         maxSize,
-		VisionService:         visionService,
-		FrameExtractor:        frameExtractor,
-		AIConfig:              aiConfig,
-		IdentificationService: identService,
+		Storage:        localStorage,
+		DB:             db,
+		VideoRepo:      videoRepo,
+		FrameRepo:      frameRepo,
+		MaxUploadSize:  maxSize,
+		VisionService:  visionService,
+		FrameExtractor: frameExtractor,
+		AIConfig:       aiConfig,
 	}
 
 	router := api.NewRouter(app)

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -154,39 +153,4 @@ func (s *VisionServiceImpl) calculateConfidence(analysis *FrameAnalysis) float64
 	}
 
 	return confidence
-}
-
-type FrameAnalysisDB struct {
-	ID           string          `json:"id"`
-	VideoID      string          `json:"video_id"`
-	FrameNumber  int             `json:"frame_number"`
-	GPTCaption   string          `json:"gpt_caption"`
-	VisionLabels json.RawMessage `json:"vision_labels"`
-	OCRText      []string        `json:"ocr_text"`
-	FaceCount    int             `json:"face_count"`
-	AnalysisTime time.Time       `json:"analysis_time"`
-	RawResponse  json.RawMessage `json:"raw_response"`
-}
-
-func (fa *FrameAnalysis) ToDB(videoID string, frameNumber int) (*FrameAnalysisDB, error) {
-	labelsJSON, err := json.Marshal(fa.Labels)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal labels: %w", err)
-	}
-
-	rawResponse, err := json.Marshal(fa)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal raw response: %w", err)
-	}
-
-	return &FrameAnalysisDB{
-		VideoID:      videoID,
-		FrameNumber:  frameNumber,
-		GPTCaption:   fa.Caption,
-		VisionLabels: labelsJSON,
-		OCRText:      fa.TextOCR,
-		FaceCount:    len(fa.Faces),
-		AnalysisTime: fa.Timestamp,
-		RawResponse:  rawResponse,
-	}, nil
 }

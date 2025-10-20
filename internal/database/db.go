@@ -4,11 +4,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/kdimtricp/vshazam/internal/models/frame_analysis"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
+	"github.com/kdimtricp/vshazam/internal/models"
 )
 
 type DB struct {
+	gormDB *gorm.DB
 	conn   *sql.DB
 	dbType string
 }
@@ -24,16 +29,16 @@ type Config struct {
 }
 
 func NewDB(config Config) (*DB, error) {
-	var conn *sql.DB
+	var gormDB *gorm.DB
 	var err error
 
 	switch config.Type {
 	case "sqlite":
-		conn, err = sql.Open("sqlite3", config.SQLitePath)
+		gormDB, err = gorm.Open(sqlite.Open(config.SQLitePath), &gorm.Config{})
 	case "postgres":
 		dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 			config.Host, config.Port, config.User, config.Password, config.Name)
-		conn, err = sql.Open("pgx", dsn)
+		gormDB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", config.Type)
 	}
@@ -42,17 +47,19 @@ func NewDB(config Config) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	if err := conn.Ping(); err != nil {
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	db := &DB{conn: conn, dbType: config.Type}
+	db := &DB{gormDB: gormDB, conn: sqlDB, dbType: config.Type}
 
-	// Only create tables for SQLite
-	if config.Type == "sqlite" {
-		if err := db.createTables(); err != nil {
-			return nil, fmt.Errorf("failed to create tables: %w", err)
-		}
+	if err := gormDB.AutoMigrate(&models.Video{}, &frame_analysis.FrameAnalysisDB{}); err != nil {
+		return nil, fmt.Errorf("failed to auto migrate: %w", err)
 	}
 
 	return db, nil
@@ -64,47 +71,14 @@ func (db *DB) RunMigrations(migrationsPath string) error {
 	return migrator.Run(migrationsPath)
 }
 
-func (db *DB) createTables() error {
-	queries := []string{
-		`CREATE TABLE IF NOT EXISTS videos (
-			id TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			description TEXT,
-			filename TEXT NOT NULL,
-			content_type TEXT NOT NULL,
-			size INTEGER NOT NULL,
-			upload_time DATETIME NOT NULL
-		);`,
-		`CREATE TABLE IF NOT EXISTS frame_analyses (
-			id TEXT PRIMARY KEY,
-			video_id TEXT NOT NULL,
-			frame_number INTEGER NOT NULL,
-			gpt_caption TEXT,
-			vision_labels TEXT,
-			ocr_text TEXT,
-			face_count INTEGER DEFAULT 0,
-			analysis_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-			raw_response TEXT,
-			UNIQUE(video_id, frame_number),
-			FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-		);`,
-		`CREATE INDEX IF NOT EXISTS idx_frame_analyses_video_id ON frame_analyses(video_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_frame_analyses_analysis_time ON frame_analyses(analysis_time);`,
-	}
-
-	for _, query := range queries {
-		if _, err := db.conn.Exec(query); err != nil {
-			return fmt.Errorf("failed to execute query: %w", err)
-		}
-	}
-	
-	return nil
-}
-
 func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
 func (db *DB) Conn() *sql.DB {
 	return db.conn
+}
+
+func (db *DB) GORM() *gorm.DB {
+	return db.gormDB
 }
