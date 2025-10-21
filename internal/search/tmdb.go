@@ -1,4 +1,4 @@
-package mdb
+package search
 
 import (
 	"context"
@@ -138,4 +138,25 @@ func (c *TMDbClient) GetImageURL(path string, size string) string {
 		return ""
 	}
 	return fmt.Sprintf("https://image.tmdb.org/t/p/%s%s", size, path)
+}
+
+func (c *TMDbClient) MovieSearch(ctx context.Context, query string) ([]MovieSearchResult, error) {
+	movies, err := c.SearchMovies(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]MovieSearchResult, 0, len(movies))
+	for _, movie := range movies {
+		results = append(results, MovieSearchResult{
+			ID:          movie.ID,
+			Title:       movie.Title,
+			ReleaseDate: movie.ReleaseDate,
+			Overview:    movie.Overview,
+			PosterPath:  movie.PosterPath,
+			VoteAverage: movie.VoteAverage,
+		})
+	}
+
+	return results, nil
 }
